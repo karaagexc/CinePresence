@@ -1,0 +1,57 @@
+<Window x:Class="CinePresence.App.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="CinePresence" Width="920" Height="850" MinWidth="780" MinHeight="680" Style="{StaticResource {x:Type Window}}" WindowStartupLocation="CenterScreen" Closing="Window_Closing">
+  <Grid Margin="28">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <Grid Margin="0,0,0,24">
+      <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <StackPanel><TextBlock Text="CinePresence" FontSize="28" FontWeight="Bold"/><TextBlock Text="Your screen time, now showing." Style="{StaticResource Muted}" Margin="0,5,0,0"/></StackPanel>
+      <Button x:Name="SharingButton" Grid.Column="1" Content="Sharing on" Style="{StaticResource PrimaryButton}" Click="Sharing_Click" VerticalAlignment="Center" MinWidth="124" AutomationProperties.Name="Toggle Discord sharing"/>
+    </Grid>
+    <Border Grid.Row="1" Background="#1D2331" CornerRadius="8" Padding="12,10" Margin="0,0,0,14"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions><Ellipse x:Name="ConnectionDot" Fill="#E0AF68" Width="7" Height="7" Margin="0,0,10,0"/><TextBlock x:Name="ConnectionText" Grid.Column="1" Text="Connecting to Discord…" FontSize="12" Foreground="{StaticResource MutedBrush}"/></Grid></Border>
+    <TabControl x:Name="Tabs" Grid.Row="2" Background="Transparent" BorderThickness="0" Padding="0,18,0,0">
+      <TabItem Header="Now Playing">
+        <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel>
+          <Grid Margin="0,3,0,16"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="ON YOUR SCREEN" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"/><TextBlock x:Name="SourceBadge" Grid.Column="1" Text="Waiting for playback" Foreground="{StaticResource AccentBrush}" FontSize="12"/></Grid>
+          <Border Style="{StaticResource Card}"><Grid>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="174"/><ColumnDefinition Width="24"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <Border Height="250" CornerRadius="10" Background="#252338" ClipToBounds="True"><Grid><StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"><TextBlock Text="▶" FontSize="40" Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center"/><TextBlock Text="NOW SHOWING" FontSize="10" Foreground="#A69AC6" Margin="0,16,0,0"/></StackPanel><Image x:Name="Poster" Stretch="UniformToFill"/></Grid></Border>
+            <StackPanel Grid.Column="2" VerticalAlignment="Center">
+              <TextBlock Text="WATCHING" FontSize="11" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" Margin="0,0,0,12"/>
+              <TextBlock x:Name="MediaTitle" Text="Something good is next." FontSize="27" FontWeight="SemiBold"/>
+              <TextBlock x:Name="MediaDescription" Text="Play a movie or episode in your favorite player." Foreground="{StaticResource MutedBrush}" FontSize="15" Margin="0,10,0,0"/>
+              <ProgressBar x:Name="PlaybackProgress" Height="5" Minimum="0" Maximum="100" Value="0" Foreground="{StaticResource AccentBrush}" Background="#32384A" BorderThickness="0" Margin="0,26,0,8"/>
+              <Grid><TextBlock x:Name="ElapsedText" Text="—:—" FontSize="12" Foreground="{StaticResource MutedBrush}"/><TextBlock x:Name="DurationText" Text="—:—" FontSize="12" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Right"/></Grid>
+              <TextBlock x:Name="TimingNote" Text="Live progress appears when your player shares timing." Style="{StaticResource Muted}" Margin="0,14,0,0" FontSize="11"/>
+            </StackPanel>
+          </Grid></Border>
+          <TextBlock x:Name="PlaybackMessage" Text="Play a movie or episode to get started." Style="{StaticResource Muted}" Margin="2,16,2,16"/>
+          <WrapPanel><Button x:Name="CorrectButton" Content="Correct match" Click="Correct_Click" Margin="0,0,10,0" IsEnabled="False"/><Button x:Name="TmdbButton" Content="View on TMDB ↗" Click="ViewTmdb_Click" IsEnabled="False"/></WrapPanel>
+          <Border Background="#151923" CornerRadius="10" Padding="16" Margin="0,24,0,0"><StackPanel><TextBlock Text="A little presence. No extra effort." FontWeight="SemiBold"/><TextBlock Text="Titles and episode details come from TMDB. Progress comes from your player. Pause playback and your Discord presence disappears." Style="{StaticResource Muted}" Margin="0,6,0,0"/></StackPanel></Border>
+        </StackPanel></ScrollViewer>
+      </TabItem>
+      <TabItem Header="Sources">
+        <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+          <TextBlock Text="Choose what gets shared." FontSize="21" FontWeight="SemiBold"/><TextBlock Grid.Row="1" Text="Automatic mode follows the active eligible player. Select a source to pin it or exclude it from sharing." Style="{StaticResource Muted}" Margin="0,8,0,18"/>
+          <ListBox x:Name="SourceList" Grid.Row="2" SelectionChanged="SourceSelection_Changed"><ListBox.ItemTemplate><DataTemplate><StackPanel><TextBlock Text="{Binding Heading}" FontWeight="SemiBold"/><TextBlock Text="{Binding Detail}" Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,5,0,0"/><TextBlock Text="{Binding Capabilities}" Foreground="{StaticResource AccentBrush}" FontSize="11" Margin="0,5,0,0"/></StackPanel></DataTemplate></ListBox.ItemTemplate></ListBox>
+          <WrapPanel Grid.Row="3" Margin="0,14,0,14"><Button Content="Automatic" Click="AutoSource_Click" Margin="0,0,10,0"/><Button x:Name="PinButton" Content="Use selected" Click="PinSource_Click" Margin="0,0,10,0" IsEnabled="False"/><Button x:Name="ExcludeButton" Content="Exclude selected" Click="ExcludeSource_Click" IsEnabled="False"/></WrapPanel>
+          <StackPanel Grid.Row="4"><TextBlock x:Name="SelectionMode" Text="Automatic source selection" Foreground="{StaticResource AccentBrush}" FontSize="12" Margin="0,0,0,10"/><TextBlock x:Name="WindowsStatus" Style="{StaticResource Muted}"/><TextBlock x:Name="VlcStatus" Style="{StaticResource Muted}" Margin="0,5,0,0"/><TextBlock Text="Any website can participate when its browser exposes playback to Windows. Missing metadata or timing may limit its presence." Style="{StaticResource Muted}" Margin="0,16,0,0"/></StackPanel>
+        </Grid>
+      </TabItem>
+      <TabItem Header="Settings">
+        <ScrollViewer x:Name="SettingsScroll" VerticalScrollBarVisibility="Auto"><StackPanel Margin="0,0,8,0">
+          <Border x:Name="OnboardingBanner" Style="{StaticResource Card}" Margin="0,0,0,16"><StackPanel><TextBlock Text="One token. Then press play." FontSize="21" FontWeight="SemiBold"/><TextBlock Text="Add your TMDB API Read Access Token below. Keep the Discord desktop app open and enable activity sharing in Discord’s settings." Style="{StaticResource Muted}" Margin="0,8,0,0"/></StackPanel></Border>
+          <TextBlock Text="TMDB" FontSize="18" FontWeight="SemiBold"/><TextBlock Text="API Read Access Token" Style="{StaticResource Muted}" Margin="0,12,0,6"/>
+          <PasswordBox x:Name="TokenBox" AutomationProperties.Name="TMDB API Read Access Token"/><WrapPanel Margin="0,10,0,6"><Button x:Name="ValidateTokenButton" Content="Test token" Click="TestToken_Click" Margin="0,0,10,0"/><Button Content="Get a TMDB token ↗" Click="GetToken_Click"/></WrapPanel><TextBlock x:Name="TokenResult" Style="{StaticResource Muted}" Margin="0,4,0,18"/>
+          <TextBlock Text="Discord" FontSize="18" FontWeight="SemiBold"/><TextBlock x:Name="AppIdLabel" Style="{StaticResource Muted}" Margin="0,8,0,8"/>
+          <TextBlock Text="Application ID override (optional)" Style="{StaticResource Muted}" Margin="0,0,0,6"/><TextBox x:Name="AppIdBox" AutomationProperties.Name="Discord application ID override"/><Button Content="Reconnect Discord" Click="Reconnect_Click" HorizontalAlignment="Left" Margin="0,10,0,22"/>
+          <TextBlock Text="VLC connection" FontSize="18" FontWeight="SemiBold"/><TextBlock Text="Use this if VLC does not already appear through Windows. This connection stays on your computer." Style="{StaticResource Muted}" Margin="0,8,0,6"/><CheckBox x:Name="VlcEnabledBox" Content="Enable VLC HTTP adapter"/>
+          <Grid Margin="0,4,0,8"><Grid.ColumnDefinitions><ColumnDefinition Width="110"/><ColumnDefinition Width="14"/><ColumnDefinition/></Grid.ColumnDefinitions><StackPanel><TextBlock Text="Local port" Style="{StaticResource Muted}" Margin="0,0,0,6"/><TextBox x:Name="VlcPortBox" Text="8080" AutomationProperties.Name="VLC local port"/></StackPanel><StackPanel Grid.Column="2"><TextBlock Text="VLC HTTP password" Style="{StaticResource Muted}" Margin="0,0,0,6"/><PasswordBox x:Name="VlcPasswordBox" AutomationProperties.Name="VLC HTTP password"/></StackPanel></Grid>
+          <WrapPanel Margin="0,0,0,6"><Button x:Name="TestVlcButton" Content="Test VLC connection" Click="TestVlc_Click" Margin="0,0,10,0"/><Button Content="Setup guide" Click="VlcGuide_Click"/></WrapPanel><TextBlock x:Name="VlcResult" Style="{StaticResource Muted}" Margin="0,4,0,16"/>
+          <CheckBox x:Name="StartupBox" Content="Start CinePresence when I sign in to Windows"/>
+          <WrapPanel Margin="0,12,0,8"><Button Content="Save settings" Style="{StaticResource PrimaryButton}" Click="Save_Click" Margin="0,0,10,0"/><Button Content="Clear match cache" Click="ClearCache_Click"/></WrapPanel><TextBlock x:Name="SaveResult" Foreground="{StaticResource AccentBrush}" Margin="0,4,0,20"/>
+          <Border Style="{StaticResource Card}" Margin="0,0,0,6"><StackPanel><TextBlock Text="About CinePresence" FontSize="17" FontWeight="SemiBold"/><TextBlock Text="Version 0.1.0 · Windows 11 · Made for movie nights." Style="{StaticResource Muted}" Margin="0,6,0,10"/><TextBlock Text="Credentials are protected for your Windows account. Settings, cached matches, and corrections stay on this computer. Title searches go to TMDB; published activity goes to Discord." Style="{StaticResource Muted}"/><Image x:Name="TmdbLogo" Width="110" Height="26" HorizontalAlignment="Left" Margin="0,18,0,10" Stretch="Uniform"/><TextBlock Text="This product uses the TMDB API but is not endorsed or certified by TMDB." Style="{StaticResource Muted}"/><TextBlock Text="CinePresence is not affiliated with Discord, TMDB, or VideoLAN." Style="{StaticResource Muted}" Margin="0,6,0,0"/></StackPanel></Border>
+        </StackPanel></ScrollViewer>
+      </TabItem>
+    </TabControl>
+    <Grid Grid.Row="3" Margin="0,20,0,0"><TextBlock Text="CINEPRESENCE / 0.1" FontSize="10" Foreground="#777F94"/><TextBlock Text="Closing this window keeps the tray app running." FontSize="10" Foreground="#777F94" HorizontalAlignment="Right"/></Grid>
+  </Grid>
+</Window>

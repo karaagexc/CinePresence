@@ -1,0 +1,228 @@
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using CinePresence.App.Services;
+
+namespace CinePresence.App;
+
+public partial class MainWindow : Window
+{
+    public sealed record SourceRow(string Id, string SourceId, string Heading, string Detail, string Capabilities);
+    private readonly AppController controller;
+    private readonly CancellationTokenSource lifetime = new();
+    private readonly HttpClient images = new() { Timeout = TimeSpan.FromSeconds(10) };
+    private int refreshQueued;
+    private string? posterUrl;
+    public bool AllowClose { get; set; }
+
+    public MainWindow(AppController controller)
+    {
+        this.controller = controller;
+        InitializeComponent();
+        TokenBox.Password = controller.TmdbToken;
+        AppIdBox.Text = controller.Settings.DiscordApplicationIdOverride;
+        AppIdLabel.Text = "Shared application ID: " + SettingsStore.ReleaseApplicationId();
+        VlcEnabledBox.IsChecked = controller.Settings.VlcEnabled;
+        VlcPortBox.Text = controller.Settings.VlcPort.ToString();
+        VlcPasswordBox.Password = controller.VlcPassword;
+        StartupBox.IsChecked = controller.Settings.StartWithWindows;
+        OnboardingBanner.Visibility = controller.Settings.OnboardingComplete ? Visibility.Collapsed : Visibility.Visible;
+        if (!controller.Settings.OnboardingComplete) Tabs.SelectedIndex = 2;
+        SaveResult.Text = controller.Warning;
+        TmdbLogo.Source = TmdbBranding.Load();
+        controller.Changed += Controller_Changed;
+        Closed += (_, _) => { controller.Changed -= Controller_Changed; lifetime.Cancel(); images.Dispose(); lifetime.Dispose(); };
+        Refresh();
+    }
+
+    private void Controller_Changed(object? sender, EventArgs e)
+    {
+        if (Dispatcher.HasShutdownStarted || Interlocked.Exchange(ref refreshQueued, 1) != 0) return;
+        Dispatcher.BeginInvoke(() => { Interlocked.Exchange(ref refreshQueued, 0); if (!lifetime.IsCancellationRequested) Refresh(); });
+    }
+
+    private void Refresh()
+    {
+        var view = controller.Engine.View;
+        SharingButton.Content = view.Sharing ? "Sharing on" : "Sharing off";
+        SharingButton.Style = (Style)FindResource(view.Sharing ? "PrimaryButton" : typeof(Button));
+        ConnectionText.Text = controller.Discord.Status;
+        ConnectionDot.Fill = new SolidColorBrush(controller.Discord.Connected ? Color.FromRgb(125, 217, 167) : Color.FromRgb(224, 175, 104));
+        ShowPlayback(view);
+        var selected = (SourceList.SelectedItem as SourceRow)?.Id;
+        SourceList.ItemsSource = view.Sources.Select(x => new SourceRow(x.SessionId, x.SourceId,
+            x.SourceName + (controller.Settings.ExcludedSources.Contains(x.SourceId) ? " · excluded" : ""),
+            $"{x.Status} · {TitleParser.Parse(x.Title, x.Subtitle, x.AlbumTitle)?.Title ?? "Unidentified media"}",
+            $"{(x.Adapter == AdapterKind.Windows ? "Windows media session" : "Local VLC connection")} · {(x.Duration is not null && x.Position is not null ? "Timing available" : "Timing unavailable")}{(x.IsMusic ? " · audio, skipped" : "")}")).ToList();
+        SourceList.SelectedItem = SourceList.Items.Cast<SourceRow>().FirstOrDefault(x => x.Id == selected);
+        WindowsStatus.Text = controller.Windows.Status;
+        VlcStatus.Text = controller.Vlc.Status;
+        SelectionMode.Text = controller.PinnedSession is null ? "Automatic source selection" : "Source pinned · use Automatic to follow another player";
+    }
+
+    private void ShowPlayback(EngineView view)
+    {
+        SourceBadge.Text = view.Source?.SourceName ?? "Waiting for playback";
+        MediaTitle.Text = view.Media?.Title ?? (view.Source is not null ? TitleParser.Parse(view.Source)?.Title : null) ?? "Something good is next.";
+        MediaDescription.Text = view.Media?.Description ?? "Play a movie or episode in your favorite player.";
+        PlaybackMessage.Text = view.Message;
+        CorrectButton.IsEnabled = view.Source is not null || view.Sources.Any(x => !x.IsMusic && !string.IsNullOrWhiteSpace(x.Title));
+        TmdbButton.IsEnabled = view.Media is not null;
+        var position = view.Source?.PositionSeconds(DateTimeOffset.UtcNow);
+        var duration = view.Source?.Duration?.TotalSeconds;
+        PlaybackProgress.Value = position is not null && duration is > 0 ? Math.Clamp(position.Value / duration.Value * 100, 0, 100) : 0;
+        ElapsedText.Text = FormatTime(position);
+        DurationText.Text = FormatTime(duration);
+        TimingNote.Text = position is not null && duration is > 0
+            ? (view.Source!.PlaybackRate != 1 ? $"{view.Source.PlaybackRate:0.##}× speed · Discord's clock scales with playback." : "Live playback progress · synchronized with your player")
+            : "Your player has not shared a complete playback timeline.";
+        var url = view.Media?.PosterUrl;
+        if (url != posterUrl) { posterUrl = url; Poster.Source = null; if (url is not null) _ = LoadPosterAsync(url); }
+    }
+
+    private async Task LoadPosterAsync(string url)
+    {
+        try
+        {
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != "https" || uri.Host != "image.tmdb.org") return;
+            var bytes = await images.GetByteArrayAsync(uri, lifetime.Token);
+            if (posterUrl != url || lifetime.IsCancellationRequested) return;
+            using var stream = new MemoryStream(bytes);
+            var bitmap = new BitmapImage(); bitmap.BeginInit(); bitmap.CacheOption = BitmapCacheOption.OnLoad; bitmap.DecodePixelWidth = 350; bitmap.StreamSource = stream; bitmap.EndInit(); bitmap.Freeze();
+            Poster.Source = bitmap;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException or NotSupportedException or ArgumentException) { }
+    }
+
+    private static string FormatTime(double? seconds)
+    {
+        if (seconds is null || !double.IsFinite(seconds.Value)) return "—:—";
+        var time = TimeSpan.FromSeconds(Math.Max(0, seconds.Value));
+        return time.TotalHours >= 1 ? $"{(int)time.TotalHours}:{time.Minutes:00}:{time.Seconds:00}" : $"{time.Minutes}:{time.Seconds:00}";
+    }
+
+    private void Sharing_Click(object sender, RoutedEventArgs e) => TryAction(() => controller.SetSharing(!controller.Settings.SharingEnabled));
+    private void AutoSource_Click(object sender, RoutedEventArgs e) => controller.Pin(null);
+    private void PinSource_Click(object sender, RoutedEventArgs e) { if (SourceList.SelectedItem is SourceRow row) controller.Pin(row.Id); }
+    private void ExcludeSource_Click(object sender, RoutedEventArgs e)
+    { if (SourceList.SelectedItem is SourceRow row) TryAction(() => controller.Exclude(row.SourceId, !controller.Settings.ExcludedSources.Contains(row.SourceId))); }
+    private void SourceSelection_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        var row = SourceList.SelectedItem as SourceRow;
+        PinButton.IsEnabled = row is not null; ExcludeButton.IsEnabled = row is not null;
+        ExcludeButton.Content = row is not null && controller.Settings.ExcludedSources.Contains(row.SourceId) ? "Allow selected" : "Exclude selected";
+    }
+
+    private async void TestToken_Click(object sender, RoutedEventArgs e)
+    {
+        ValidateTokenButton.IsEnabled = false; TokenResult.Text = "Testing token…";
+        try { await controller.Tmdb.ValidateAsync(TokenBox.Password.Trim(), lifetime.Token); TokenResult.Text = "Token accepted. Save settings to start identifying titles."; }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { TokenResult.Text = SafeMessage(ex); }
+        finally { ValidateTokenButton.IsEnabled = true; }
+    }
+
+    private async void TestVlc_Click(object sender, RoutedEventArgs e)
+    {
+        TestVlcButton.IsEnabled = false; VlcResult.Text = "Connecting to VLC…";
+        try
+        {
+            if (!int.TryParse(VlcPortBox.Text, out var port)) throw new ServiceException("Enter a numeric VLC port.");
+            VlcResult.Text = await controller.Vlc.TestAsync(new(true, port, VlcPasswordBox.Password), lifetime.Token);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { VlcResult.Text = SafeMessage(ex); }
+        finally { TestVlcButton.IsEnabled = true; }
+    }
+
+    private void Save_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (!int.TryParse(VlcPortBox.Text, out var port)) throw new ServiceException("Enter a numeric VLC port.");
+            controller.SaveSettings(TokenBox.Password, AppIdBox.Text, VlcEnabledBox.IsChecked == true, port, VlcPasswordBox.Password, StartupBox.IsChecked == true);
+            SaveResult.Text = "Settings saved. CinePresence is ready.";
+            OnboardingBanner.Visibility = controller.Settings.OnboardingComplete ? Visibility.Collapsed : Visibility.Visible;
+            Refresh();
+        }
+        catch (Exception ex) { SaveResult.Text = SafeMessage(ex); }
+    }
+    private void Reconnect_Click(object sender, RoutedEventArgs e)
+    {
+        var id = string.IsNullOrWhiteSpace(AppIdBox.Text) ? SettingsStore.ReleaseApplicationId() : AppIdBox.Text.Trim();
+        controller.Discord.Connect(id);
+    }
+    private void GetToken_Click(object sender, RoutedEventArgs e) => OpenUrl("https://www.themoviedb.org/settings/api");
+    private void ViewTmdb_Click(object sender, RoutedEventArgs e) { if (controller.Engine.View.Media is { } media) OpenUrl(media.Url); }
+    private static void OpenUrl(string url)
+    {
+        try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
+        catch (Exception) { MessageBox.Show("Your browser could not be opened. Check your default browser settings.", "CinePresence"); }
+    }
+    private void ClearCache_Click(object sender, RoutedEventArgs e)
+    {
+        if (MessageBox.Show("Clear cached matches and all saved match corrections?", "Clear match cache", MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
+        TryAction(() => { controller.Cache.Clear(); controller.RefreshMatch(); SaveResult.Text = "Match cache and corrections cleared."; });
+    }
+    private void Correct_Click(object sender, RoutedEventArgs e)
+    {
+        var view = controller.Engine.View;
+        var source = view.Source ?? view.Sources.FirstOrDefault(x => !x.IsMusic && !string.IsNullOrWhiteSpace(x.Title));
+        if (source is null) return;
+        var parsed = TitleParser.Parse(source.Title, source.Subtitle, source.AlbumTitle);
+        if (parsed is null) { MessageBox.Show("The player needs to provide a usable title before a correction can be remembered.", "CinePresence"); return; }
+        var dialog = new MatchWindow(controller, parsed) { Owner = this };
+        if (dialog.ShowDialog() == true) controller.RefreshMatch();
+    }
+    private void VlcGuide_Click(object sender, RoutedEventArgs e)
+    {
+        MessageBox.Show("1. First check Sources while VLC plays a video. If title and timing are already available, HTTP is optional.\n\n2. In VLC: Tools → Preferences → Show settings: All → Interface → Main interfaces. Enable Web.\n\n3. Open Main interfaces → Lua and set a strong Lua HTTP password. Enter the same password here.\n\n4. Restrict the HTTP interface to localhost. With VLC closed, set http-host=127.0.0.1 in %APPDATA%\\vlc\\vlcrc (and http-port=8080, or your chosen port). Preserve all other settings.\n\n5. Restart VLC, play a video, then Test VLC connection. Enable the adapter and Save settings.\n\nCinePresence only contacts 127.0.0.1 and never changes VLC settings automatically. More detail is included in docs/VLC-SETUP.md.", "VLC setup", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+    private void TryAction(Action action)
+    {
+        try { action(); }
+        catch (Exception ex) { MessageBox.Show(SafeMessage(ex), "CinePresence"); }
+    }
+    private static string SafeMessage(Exception ex) => ex is ServiceException ? ex.Message : "This action could not finish. Check your connection and local folder permissions.";
+    private void Window_Closing(object? sender, CancelEventArgs e)
+    {
+        if (AllowClose) return;
+        e.Cancel = true; Hide();
+    }
+
+    // Used by the command-line UI smoke test. No real presence is published.
+    public void CaptureSmoke(string directory)
+    {
+        Capture("onboarding.png");
+        Tabs.SelectedIndex = 0;
+        Capture("now-playing-empty.png");
+        var now = DateTimeOffset.UtcNow;
+        var source = new PlaybackSnapshot("sample", "vlc", "VLC", AdapterKind.Vlc, "Example.Series.S02E04.mkv", "", "", "", false, PlaybackStatus.Playing, TimeSpan.FromMinutes(17), TimeSpan.FromMinutes(46), 1, now, now);
+        ShowPlayback(new(source, new(1, MediaType.Tv, "Example Series", 2026, null, 2, 4, "A New Beginning"), "Preview fixture · no activity published", true, false, [source]));
+        Capture("now-playing-fixture.png");
+        SourceList.ItemsSource = new[] { new SourceRow("sample", "vlc", "VLC", "Playing · Example Series", "Local VLC connection · Timing available") };
+        Tabs.SelectedIndex = 1; Capture("sources.png");
+        Tabs.SelectedIndex = 2; SettingsScroll.ScrollToEnd(); Capture("settings-bottom.png");
+        File.WriteAllText(Path.Combine(directory, "smoke-ok.txt"), "Rendered onboarding, empty state, fixture presence, sources, and settings. No external service was contacted.");
+        void Capture(string name)
+        {
+            UpdateLayout();
+            var content = (FrameworkElement)Content;
+            var visual = new DrawingVisual();
+            using (var context = visual.RenderOpen())
+            {
+                context.DrawRectangle((Brush)FindResource("BackgroundBrush"), null, new Rect(0, 0, content.ActualWidth + 56, content.ActualHeight + 56));
+                var offset = VisualTreeHelper.GetOffset(content);
+                var brush = new VisualBrush(content) { ViewboxUnits = BrushMappingMode.Absolute, Viewbox = new Rect(offset.X, offset.Y, content.ActualWidth, content.ActualHeight) };
+                context.DrawRectangle(brush, null, new Rect(28, 28, content.ActualWidth, content.ActualHeight));
+            }
+            var bitmap = new RenderTargetBitmap((int)content.ActualWidth + 56, (int)content.ActualHeight + 56, 96, 96, PixelFormats.Pbgra32);
+            bitmap.Render(visual);
+            var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            using var stream = File.Create(Path.Combine(directory, name)); encoder.Save(stream);
+        }
+    }
+}

@@ -1,0 +1,9 @@
+.tools/
+**/bin/
+**/obj/
+artifacts/
+.vs/
+*.user
+*.suo
+TestResults/
+release.local.json
