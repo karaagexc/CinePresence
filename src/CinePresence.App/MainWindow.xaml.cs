@@ -58,10 +58,11 @@ public partial class MainWindow : Window
         SourceList.ItemsSource = view.Sources.Select(x => new SourceRow(x.SessionId, x.SourceId,
             x.SourceName + (controller.Settings.ExcludedSources.Contains(x.SourceId) ? " · excluded" : ""),
             $"{x.Status} · {TitleParser.Parse(x.Title, x.Subtitle, x.AlbumTitle)?.Title ?? "Unidentified media"}",
-            $"{(x.Adapter == AdapterKind.Windows ? "Windows media session" : "Local VLC connection")} · {(x.IsLive ? "Live stream · no fixed end time" : x.Duration is not null && x.Position is not null ? "Timing available" : "Timing unavailable")}{(x.IsMusic ? " · known audio, skipped" : "")}{(x.TitleFromWindow ? " · title from active tab/window" : "")}{(x.IgnoredReason is not null ? " · " + x.IgnoredReason : x.RequiresConfirmation ? " · confirm movie/show before sharing" : "")}{(string.IsNullOrWhiteSpace(x.Title) ? " · title unavailable: select the playing tab" : "")}")).ToList();
+            $"{(x.Adapter == AdapterKind.Browser ? "Browser companion" : x.Adapter == AdapterKind.Windows ? "Windows media session" : "Local VLC connection")} · {(x.IsLive ? "Live stream · no fixed end time" : x.Duration is not null && x.Position is not null ? "Timing available" : "Timing unavailable")}{(x.IsMusic ? " · known audio, skipped" : "")}{(x.TitleFromWindow ? " · title from active tab/window" : "")}{(x.IgnoredReason is not null ? " · " + x.IgnoredReason : x.RequiresConfirmation ? " · confirm movie/show before sharing" : "")}{(string.IsNullOrWhiteSpace(x.Title) ? x.Adapter == AdapterKind.Browser ? " · enter a title in the companion popup" : " · title unavailable: select the playing tab" : "")}")).ToList();
         SourceList.SelectedItem = SourceList.Items.Cast<SourceRow>().FirstOrDefault(x => x.Id == selected);
         WindowsStatus.Text = controller.Windows.Status;
         VlcStatus.Text = controller.Vlc.Status;
+        BrowserStatus.Text = controller.Browser.Status;
         SelectionMode.Text = controller.PinnedSession is null ? "Automatic source selection" : "Source pinned · use Automatic to follow another player";
     }
 
@@ -195,6 +196,14 @@ public partial class MainWindow : Window
     {
         MessageBox.Show("1. First check Sources while VLC plays a video. If title and timing are already available, HTTP is optional.\n\n2. In VLC: Tools → Preferences → Show settings: All → Interface → Main interfaces. Enable Web.\n\n3. Open Main interfaces → Lua and set a strong Lua HTTP password. Enter the same password here.\n\n4. Restrict the HTTP interface to localhost. With VLC closed, set http-host=127.0.0.1 in %APPDATA%\\vlc\\vlcrc (and http-port=8080, or your chosen port). Preserve all other settings.\n\n5. Restart VLC, play a video, then Test VLC connection. Enable the adapter and Save settings.\n\nCinePresence only contacts 127.0.0.1 and never changes VLC settings automatically. More detail is included in docs/VLC-SETUP.md.", "VLC setup", MessageBoxButton.OK, MessageBoxImage.Information);
     }
+    private void BrowserSetup_Click(object sender, RoutedEventArgs e) => TryAction(() =>
+    {
+        BrowserSetup.Register();
+        Process.Start(new ProcessStartInfo(Path.Combine(AppContext.BaseDirectory, "browser-setup.html")) { UseShellExecute = true });
+        BrowserSetupResult.Text = "Connection prepared. Follow the opened guide to enable the companion, then reload your playing tab.";
+    });
+    private void BrowserFolder_Click(object sender, RoutedEventArgs e) => TryAction(() =>
+        Process.Start(new ProcessStartInfo("explorer.exe", "\"" + BrowserSetup.ExtensionDirectory + "\"") { UseShellExecute = true }));
     private void TryAction(Action action)
     {
         try { action(); }

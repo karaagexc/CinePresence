@@ -12,6 +12,10 @@ Push-Location $projectRoot
 try {
     & $sdkPath publish 'src\CinePresence.App\CinePresence.App.csproj' -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:PublishTrimmed=false -p:DebugType=None -o $outputPath
     if ($LASTEXITCODE -ne 0) { throw 'Publish failed.' }
+    & $sdkPath publish 'src\CinePresence.BrowserHost\CinePresence.BrowserHost.csproj' -c Release -r win-x64 --self-contained true -p:DebugType=None -o $outputPath
+    if ($LASTEXITCODE -ne 0) { throw 'Browser host publish failed.' }
+    Copy-Item -LiteralPath (Join-Path $projectRoot 'browser-companion') -Destination $outputPath -Recurse -Force
+    Copy-Item -LiteralPath (Join-Path $projectRoot 'browser-setup.html') -Destination $outputPath
     @{ discordApplicationId = $DiscordApplicationId } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $outputPath 'release.json') -Encoding utf8
     Copy-Item -LiteralPath (Join-Path $projectRoot 'README.md') -Destination $outputPath
     Copy-Item -LiteralPath (Join-Path $projectRoot 'THIRD-PARTY-NOTICES.md') -Destination $outputPath
@@ -31,6 +35,8 @@ try {
     Copy-Item -Path (Join-Path $projectRoot 'docs\*.md') -Destination (Join-Path $outputPath 'docs')
     $zipPath = Join-Path $projectRoot ('artifacts\CinePresence-' + $appVersion + '-win-x64.zip')
     Compress-Archive -Path $outputPath -DestinationPath $zipPath -Force
-    Get-FileHash -LiteralPath $zipPath -Algorithm SHA256 | ForEach-Object { $_.Hash + '  ' + (Split-Path $_.Path -Leaf) } | Set-Content (Join-Path $projectRoot 'artifacts\SHA256SUMS.txt')
+    & (Join-Path $PSScriptRoot 'build-installer.ps1') -Version $appVersion
+    $setupPath = Join-Path $projectRoot ('artifacts\CinePresence-' + $appVersion + '-Setup-win-x64.exe')
+    @($zipPath, $setupPath) | ForEach-Object { Get-FileHash -LiteralPath $_ -Algorithm SHA256 } | ForEach-Object { $_.Hash + '  ' + (Split-Path $_.Path -Leaf) } | Set-Content (Join-Path $projectRoot 'artifacts\SHA256SUMS.txt')
     Write-Output $zipPath
 } finally { Pop-Location }

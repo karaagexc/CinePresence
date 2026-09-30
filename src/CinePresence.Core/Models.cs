@@ -1,7 +1,7 @@
 namespace CinePresence.Core;
 
 public enum PlaybackStatus { Stopped, Playing, Paused }
-public enum AdapterKind { Windows, Vlc }
+public enum AdapterKind { Windows, Vlc, Browser }
 public enum MediaType { Movie, Tv }
 
 public sealed record PlaybackSnapshot(

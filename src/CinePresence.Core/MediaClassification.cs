@@ -19,9 +19,15 @@ public static partial class MediaClassification
         var process = WindowTitlePolicy.ProcessName(sourceId);
         if (process is null or "vlc") return (null, false);
         var name = TitleParser.Normalize(Regex.Replace(title, @"^\s*\(\d+\)\s*", ""));
+        var parsed = TitleParser.Parse(title, subtitle, album);
+        var windows = captions?.ToArray();
+        // An unrelated YouTube/feed window must not veto the only useful show
+        // caption. Explicit excluded metadata and competing media captions still
+        // fail closed; native captions cannot reliably identify every site.
         if (new[] { title, subtitle, album, artist }.Any(IsBlockedVideoPlatform) ||
-            (captions ?? []).Any(caption => IsBlockedVideoPlatform(caption) &&
-                (TitleParser.Parse(title, subtitle, album) is null || TitleParser.Normalize(caption).StartsWith(name + " ", StringComparison.Ordinal))))
+            (windows ?? []).Any(caption => IsBlockedVideoPlatform(caption) &&
+                (parsed is null ? WindowTitlePolicy.Resolve(windows!) is null :
+                    TitleParser.Normalize(caption).StartsWith(name + " ", StringComparison.Ordinal))))
             return ("Social/video platform excluded · not shared", false);
         // A website name can also be a TMDB movie title. It is not evidence that
         // the browser is playing that movie, regardless of search/cache results.
@@ -29,10 +35,9 @@ public static partial class MediaClassification
             or "home" or "feed" or "news feed" or "reels" or "shorts" or "watch" or "videos" or "new tab" or "live" or "stream" ||
             Regex.IsMatch(title.Trim(), @"(?i)^(?:https?://)?(?:www\.)?[\w-]+\.[a-z]{2,}/?$"))
             return ("Page or feed name · not shared", false);
-        var parsed = TitleParser.Parse(title, subtitle, album);
         var hasEvidence = parsed is not null && (parsed.HasEpisode || parsed.Year is not null ||
             StreamingTitle.Read(title).HasPlaybackContext || Regex.IsMatch(title, @"(?i)\.(?:mp4|mkv|avi|mov|webm|m4v)\b"));
-        if (hasEvidence && captions is not null && !captions.Any(caption =>
+        if (hasEvidence && windows is not null && !windows.Any(caption =>
             TitleParser.Normalize(caption).StartsWith(name + " ", StringComparison.Ordinal) ||
             TitleParser.Normalize(caption) == name ||
             TitleParser.Parse(caption) is { } windowTitle && TitleParser.Normalize(windowTitle.Title) == TitleParser.Normalize(parsed!.Title)))

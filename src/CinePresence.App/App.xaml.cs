@@ -25,6 +25,11 @@ public partial class App : System.Windows.Application
         if (e.Args.Contains("--smoke-test")) { RunSmoke(e.Args); return; }
         if (e.Args.Contains("--diagnose")) { RunDiagnostics(e.Args); return; }
         if (e.Args.Contains("--probe-vlc")) { RunVlcProbe(e.Args); return; }
+        if (e.Args.Contains("--register-browser"))
+        {
+            try { BrowserSetup.Register(); Shutdown(0); } catch (Exception) { Shutdown(1); }
+            return;
+        }
         mutex = new Mutex(true, "Local\\CinePresence." + Environment.UserName, out var first);
         if (!first) { MessageBox.Show("CinePresence is already running. Open it from the system tray.", "CinePresence"); Shutdown(); return; }
         try

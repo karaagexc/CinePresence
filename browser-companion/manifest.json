@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "CinePresence Companion",
+  "version": "0.2.0",
+  "description": "Send movie and series playback metadata to your local CinePresence app. Social and general video platforms are excluded.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmR9zv0Rh3m9cS4KqBNPr4PPA8wdiULKlF9Su+NVwezkWKiKBz2FgJ4HwYMI6er4g8O7y41swa2FN+eZK6EyfStxA4eiKaZoVn7BKpm0PsA7tIHc3mZhofLZ+6vCxonPWsA9OydOXdjpu7VwncUIuee13JhgS9xDdVVn3DLE1pjyUqLKu/35SnfAjB13yqRHysgTcopAOkxCHSy7m6yzTugJgxPpnUsatd5M4x4fazgQ5Exb7Hz9qFEk0joSZrVkQ4LwADjBzvJLnssfiWeR4ssybK550Z5uu9IoY6U9goyQjIY10FKxjOuYFQG18dnxLf15ekBXi48LohLxfmRpI2wIDAQAB",
+  "permissions": ["nativeMessaging", "storage", "tabs"],
+  "background": { "service_worker": "worker.js", "type": "module" },
+  "action": { "default_popup": "popup.html", "default_title": "CinePresence" },
+  "content_scripts": [{
+    "matches": ["http://*/*", "https://*/*"],
+    "js": ["metadata.js", "content.js"],
+    "run_at": "document_idle",
+    "all_frames": true,
+    "match_origin_as_fallback": true
+  }]
+}

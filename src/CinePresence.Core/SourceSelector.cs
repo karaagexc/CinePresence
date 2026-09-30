@@ -2,6 +2,10 @@ namespace CinePresence.Core;
 
 public static class SourceSelector
 {
+    public static IEnumerable<PlaybackSnapshot> ApplyBrowserAuthority(IEnumerable<PlaybackSnapshot> snapshots, IReadOnlySet<string> browsers) =>
+        snapshots.Select(x => x.Adapter == AdapterKind.Windows && WindowTitlePolicy.ProcessName(x.SourceId) is { } browser && browsers.Contains(browser)
+            ? x with { IgnoredReason = "Browser companion handles this browser · Windows duplicate skipped" } : x);
+
     public static IReadOnlyList<PlaybackSnapshot> Deduplicate(IEnumerable<PlaybackSnapshot> snapshots)
     {
         var all = snapshots.ToList();
@@ -24,7 +28,8 @@ public static class SourceSelector
     public static PlaybackSnapshot? Select(IEnumerable<PlaybackSnapshot> snapshots, string? pinnedSession,
         IReadOnlySet<string> excludedSources, PlaybackSnapshot? current = null)
     {
-        var eligible = Deduplicate(snapshots).Where(x => !excludedSources.Contains(x.SourceId) && TitleParser.Parse(x) is not null).ToList();
+        var eligible = Deduplicate(snapshots).Where(x => !excludedSources.Contains(x.SourceId) &&
+            !excludedSources.Any(e => WindowTitlePolicy.ProcessName(e) is { } process && process == WindowTitlePolicy.ProcessName(x.SourceId)) && TitleParser.Parse(x) is not null).ToList();
         if (!string.IsNullOrEmpty(pinnedSession)) return eligible.FirstOrDefault(x => x.SessionId == pinnedSession);
         var playing = eligible.Where(x => x.Status == PlaybackStatus.Playing).ToList();
         // Keep the selected player until it pauses, stops, disappears, or becomes
@@ -33,6 +38,8 @@ public static class SourceSelector
         {
             var retained = playing.FirstOrDefault(x => x.SessionId == current.SessionId);
             retained ??= playing.FirstOrDefault(x => x.IsVlc && current.IsVlc && SameItem(x, current));
+            retained ??= playing.FirstOrDefault(x => x.Adapter != current.Adapter && (x.Adapter == AdapterKind.Browser || current.Adapter == AdapterKind.Browser) &&
+                WindowTitlePolicy.ProcessName(x.SourceId) == WindowTitlePolicy.ProcessName(current.SourceId) && SameItem(x, current));
             if (retained is not null) return retained;
         }
         // Adapters retain LastActiveAt for each uninterrupted playing interval.

@@ -20,6 +20,7 @@ public sealed class AppController : IAsyncDisposable
     public string ApplicationId => string.IsNullOrWhiteSpace(Settings.DiscordApplicationIdOverride) ? SettingsStore.ReleaseApplicationId() : Settings.DiscordApplicationIdOverride;
     public string DataDirectory => store.DirectoryPath;
     public WindowsMediaAdapter Windows { get; } = new();
+    public BrowserAdapter Browser { get; } = new();
     public VlcAdapter Vlc { get; }
     public DiscordPublisher Discord { get; } = new();
     public TmdbClient Tmdb { get; }
@@ -47,7 +48,7 @@ public sealed class AppController : IAsyncDisposable
     public void Start()
     {
         Discord.Connect(ApplicationId);
-        StartAdapter(Windows); StartAdapter(Vlc);
+        Browser.Start(); StartAdapter(Browser); StartAdapter(Windows); StartAdapter(Vlc);
     }
 
     private void StartAdapter(IPlaybackAdapter adapter)
@@ -124,7 +125,7 @@ public sealed class AppController : IAsyncDisposable
         store.Save(Settings);
     }
 
-    private IReadOnlyList<PlaybackSnapshot> PrepareSources() => snapshots.Values.SelectMany(x => x).Select(source =>
+    private IReadOnlyList<PlaybackSnapshot> PrepareSources() => SourceSelector.ApplyBrowserAuthority(snapshots.Values.SelectMany(x => x), Browser.ConnectedBrowsers).Select(source =>
     {
         var parsed = TitleParser.Parse(source.Title, source.Subtitle, source.AlbumTitle);
         // Only an explicit correction can approve ambiguous browser metadata.
@@ -145,7 +146,7 @@ public sealed class AppController : IAsyncDisposable
     {
         lifetime.Cancel(); Engine.Dispose();
         await Task.WhenAll(loops).ConfigureAwait(false);
-        await Windows.DisposeAsync(); await Vlc.DisposeAsync();
+        await Windows.DisposeAsync(); await Vlc.DisposeAsync(); await Browser.DisposeAsync();
         tmdbHttp.Dispose(); vlcHttp.Dispose(); lifetime.Dispose();
     }
 }

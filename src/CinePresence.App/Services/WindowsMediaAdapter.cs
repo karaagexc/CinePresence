@@ -68,18 +68,10 @@ public sealed class WindowsMediaAdapter : IPlaybackAdapter
                     var hasTimeline = timeline.LastUpdatedTime != default && rawPosition >= TimeSpan.Zero;
                     var previous = entry.Previous;
                     var sourceId = session.SourceAppUserModelId.Contains("vlc", StringComparison.OrdinalIgnoreCase) ? "vlc" : session.SourceAppUserModelId;
-                    var title = metadata.Title ?? "";
-                    var titleFromWindow = false;
                     var captions = WindowTitleReader.ReadCaptions(session.SourceAppUserModelId);
-                    var eligibility = MediaClassification.BrowserEligibility(sourceId, title, metadata.Subtitle ?? "", metadata.AlbumTitle ?? "", metadata.Artist ?? "", captions);
-                    var parsedMetadata = TitleParser.Parse(title, metadata.Subtitle ?? "", metadata.AlbumTitle ?? "");
-                    if (eligibility.IgnoredReason is null && sessions.Count(x => x.SourceAppUserModelId == session.SourceAppUserModelId) == 1)
-                    {
-                        var caption = WindowTitlePolicy.Resolve(captions);
-                        if (caption is not null && WindowTitlePolicy.AddsUsefulMetadata(parsedMetadata, caption))
-                        { title = caption; titleFromWindow = true; }
-                    }
-                    eligibility = MediaClassification.BrowserEligibility(sourceId, title, metadata.Subtitle ?? "", metadata.AlbumTitle ?? "", metadata.Artist ?? "", captions);
+                    var eligibility = WindowTitlePolicy.ResolveMetadata(sourceId, metadata.Title ?? "", metadata.Subtitle ?? "", metadata.AlbumTitle ?? "", metadata.Artist ?? "", captions,
+                        sessions.Count(x => x.SourceAppUserModelId == session.SourceAppUserModelId) == 1);
+                    var title = eligibility.Title;
                     var stateChanged = previous is null || previous.Status != state;
                     var isLive = entry.LiveTimeline.Observe(TitleParser.Parse(title, metadata.Subtitle ?? "", metadata.AlbumTitle ?? "")?.Key ?? title,
                         timeline.Position, timeline.EndTime, timeline.MinSeekTime, now, StreamingTitle.Read(title).IsLive);
@@ -88,7 +80,7 @@ public sealed class WindowsMediaAdapter : IPlaybackAdapter
                         MediaClassification.IsClearlyAudio(sourceId, title), state,
                         hasTimeline ? rawPosition : null, duration > TimeSpan.Zero && duration.TotalDays < 7 ? duration : null,
                         playback.PlaybackRate ?? 1, observed, stateChanged ? now : previous!.LastActiveAt,
-                        Equals(session, current), TitleFromWindow: titleFromWindow, IsLive: isLive,
+                        Equals(session, current), TitleFromWindow: eligibility.FromWindow, IsLive: isLive,
                         IgnoredReason: eligibility.IgnoredReason, RequiresConfirmation: eligibility.RequiresConfirmation);
                     entry.Previous = snapshot;
                     snapshots.Add(snapshot);

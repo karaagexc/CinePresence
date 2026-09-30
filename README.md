@@ -4,17 +4,20 @@ A Windows tray app that turns movie and TV playback into Discord Rich Presence. 
 
 ## Get started
 
-1. Extract the **entire** release ZIP into a permanent folder. Run `CinePresence.exe`. Windows 11 x64 is the initial supported platform; the release includes .NET.
+1. Run the **Setup-win-x64.exe** installer, or extract the **entire** portable ZIP into a permanent folder and run `CinePresence.exe`. Windows 11 x64 is the initial supported platform; both include .NET.
 2. Keep the **Discord desktop app** open and enable activity sharing in Discord's settings.
 3. Create a TMDB API credential at [TMDB account settings](https://www.themoviedb.org/settings/api). Paste the **API Read Access Token** (the long bearer token, not the shorter API key) into CinePresence → Settings. Test it, then save.
 4. Play a movie, episode, or live show listed on TMDB. Open Sources to see what Windows exposes. If VLC does not expose enough information, follow [VLC setup](docs/VLC-SETUP.md).
 5. A small **Watching** popup appears on the right when a new title is recognized. Use its **Change match** button or **Correct match** in the app if the result is wrong. Corrections can include a season and episode and are remembered for the detected title.
+6. For better browser detection, keep **Prepare the optional Chrome/Edge companion** checked in the installer, then follow the guide it opens. Portable users can choose **Settings → Set up companion**. This preview is loaded with the browser's **Developer mode → Load unpacked** option; there is no browser-store listing yet. See [browser setup](docs/BROWSER-COMPANION.md).
 
 The release uses Discord application ID `1554495827219578880`. Most users should leave its override empty. CinePresence never needs a Discord user token, bot token, client secret, or Discord password.
 
 ## Behavior
 
 - Compatible movie/TV websites can participate through Windows media sessions without a browser extension or a list of supported streaming sites. If media metadata has no usable title, CinePresence can use a caption with episode markers, a release year, a video filename, or recognizable watch-page wording when one unambiguous media candidate and session are available. It can fill missing episode numbers when the caption and series title agree. Keep the playing tab selected so its context can be checked; unassociated browser sessions are left unshared.
+- The optional Chrome/Edge companion reads structured Movie/TVSeries/TVEpisode data, page headings, Open Graph titles and readable media metadata. It pairs parent-page details with embedded HTML video players and reports actual position, duration, pause and speed. It can work without a Windows media session. A generic page heading alone still requires confirmation; it is not proof of a movie. Missing titles can be entered in the companion popup for the current page, with optional season/episode. This override resets on navigation or browser restart.
+- While the companion is connected, it owns detection for that browser and suppresses duplicate Windows sessions. Both top-level and embedded-player domains are checked against the exclusions. Tab closure/navigation removes playback; a lost browser connection expires within six seconds. Private windows are skipped by the companion. Disabling/removing it restores native detection, with the native metadata limitations described below.
 - Social/feed and general video platforms are excluded in this release: Facebook, YouTube, Twitter/X, Instagram, TikTok, VK, Vimeo, Dailymotion, Reddit, Twitch, Kick, Snapchat, Pinterest, and Threads. Matching a movie title does not bypass these exclusions. Detection uses available media metadata and associated window captions; Windows does not provide a dependable site URL for every browser session. If the source cannot be established, automatic sharing is blocked.
 - Generic page names such as “Facebook” and “News Feed” are never treated as movie evidence, even if TMDB has an exact title match. Other ambiguous browser titles need **Correct match** confirmation; clear movie/episode/live-show metadata remains automatic on eligible sites. Only saved explicit corrections can approve ambiguous titles—old automatic cache results cannot. Automatic lookup also requires stronger title similarity.
 - Windows Media Player and Movies & TV work only when their installed versions publish media sessions. Legacy players without a session or adapter are not supported automatically.
@@ -33,9 +36,9 @@ The release uses Discord application ID `1554495827219578880`. Most users should
 
 Settings and a bounded match cache live in `%LOCALAPPDATA%\CinePresence`. TMDB tokens and VLC passwords are encrypted with Windows DPAPI for the current account. Detected filenames are normalized before lookup; cache lookup keys are hashed. TMDB receives title searches, and Discord receives the selected public activity and TMDB artwork URL. No telemetry or hosted CinePresence backend is used.
 
-Browser sessions may expose private/incognito playback without an incognito flag. Turn sharing off or exclude the browser when you do not want it shared. Exclusions apply to apps, not individual websites, because Windows does not reliably provide site identity.
+Native Windows browser sessions may expose private/incognito playback without an incognito flag. Turn sharing off or exclude the browser when you do not want it shared. Native exclusions rely on available titles/captions because Windows does not reliably provide site identity. The companion checks actual domains and skips private windows. It sends only candidate titles/episode fields, domain names, an opaque page hash and playback data to the local app, over Chrome/Edge native messaging and a pipe restricted to the current Windows user. It does not send complete page URLs, cookies, form fields, passwords, chat text or browsing history. Its page permission is needed for DOM metadata and embedded players; no browser debugging port or local HTTP server is opened.
 
-Clear match cache removes cached matches and saved corrections. To remove the app, first turn off Start at login, quit from the tray, and delete its extracted folder. Delete the local data folder too if you want to remove saved preferences and credentials.
+Clear match cache removes cached matches and saved corrections. Installed copies can be removed through Windows Installed Apps; the uninstaller removes its browser connection and startup registration while preserving local preferences and credentials. Remove the companion separately through your browser's extensions page. For portable copies, turn off Start at login, quit, and delete the extracted folder. Delete the local data folder too if you want to remove saved preferences and credentials.
 
 ## Build and test
 
@@ -44,7 +47,7 @@ Clear match cache removes cached matches and saved corrections. To remove the ap
 .\scripts\package.ps1
 ```
 
-The scripts install Microsoft's .NET 10 SDK locally into `.tools` if needed. NuGet packages also stay in `.tools`. The release script runs tests and creates a versioned ZIP and extracted release directory under `artifacts`, plus `SHA256SUMS.txt`. It requires network access for the SDK, packages, and self-contained runtime packs.
+The scripts install Microsoft's .NET 10 SDK locally into `.tools` if needed. NuGet packages also stay in `.tools`. Development tests also require Node.js. The release script runs the .NET and companion tests and creates a versioned ZIP, extracted release directory, Windows installer and `SHA256SUMS.txt` under `artifacts`. The installer compiler is a pinned, signature-checked Inno Setup download installed in `.tools/inno`. Building requires network access for these dependencies. The resulting app and installer do not require Node.js or a separately installed .NET runtime.
 
 To use your own Discord application identity, pass `-DiscordApplicationId` to the packaging script or use the app's override. Application IDs are public identifiers, not secrets. Never embed a shared TMDB token in a release.
 

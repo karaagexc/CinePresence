@@ -20,10 +20,24 @@ public static partial class WindowTitlePolicy
         var candidates = captions
             .Select(x => Regex.Replace(x, @"\p{Cf}", ""))
             .Select(x => AppSuffix().Replace(x, "").Trim())
-            .Where(IsMediaCaption).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            .Where(HasMediaEvidence).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         // This is a fallback hint, not browser metadata. Only use a single
         // plausible movie/episode caption; multiple media windows are ambiguous.
-        return candidates.Length == 1 ? candidates[0] : null;
+        // Count plausible captions on excluded platforms too. Otherwise an
+        // unrelated show window could be substituted for a YouTube episode.
+        return candidates.Length == 1 && !MediaClassification.IsBlockedVideoPlatform(candidates[0]) ? candidates[0] : null;
+    }
+
+    public static (string Title, bool FromWindow, string? IgnoredReason, bool RequiresConfirmation) ResolveMetadata(
+        string sourceId, string title, string subtitle, string album, string artist, IReadOnlyList<string> captions, bool singleSession)
+    {
+        var eligibility = MediaClassification.BrowserEligibility(sourceId, title, subtitle, album, artist, captions);
+        var fromWindow = false;
+        if (eligibility.IgnoredReason is null && singleSession && Resolve(captions) is { } caption &&
+            AddsUsefulMetadata(TitleParser.Parse(title, subtitle, album), caption))
+        { title = caption; fromWindow = true; }
+        eligibility = MediaClassification.BrowserEligibility(sourceId, title, subtitle, album, artist, captions);
+        return (title, fromWindow, eligibility.IgnoredReason, eligibility.RequiresConfirmation);
     }
 
     public static bool AddsUsefulMetadata(ParsedTitle? metadata, string caption)
@@ -38,9 +52,8 @@ public static partial class WindowTitlePolicy
         return !metadata.HasEpisode && (candidate.HasEpisode || metadata.Year is null && candidate.Year is not null);
     }
 
-    private static bool IsMediaCaption(string title)
+    private static bool HasMediaEvidence(string title)
     {
-        if (MediaClassification.IsBlockedVideoPlatform(title)) return false;
         var parsed = TitleParser.Parse(title);
         if (parsed is null || MediaClassification.IsClearlyAudio("", title)) return false;
         return parsed.HasEpisode || parsed.Year is not null || StreamingTitle.Read(title).HasPlaybackContext ||

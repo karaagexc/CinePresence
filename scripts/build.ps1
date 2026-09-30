@@ -20,5 +20,7 @@ try {
     if (-not $SkipTests) {
         & $sdkPath test 'CinePresence.sln' -c $Configuration --no-build --no-restore --logger 'console;verbosity=minimal'
         if ($LASTEXITCODE -ne 0) { throw 'Tests failed.' }
+        & node --test 'tests/browser-companion.test.cjs'
+        if ($LASTEXITCODE -ne 0) { throw 'Browser companion tests failed. Node.js is required for development tests only.' }
     }
 } finally { Pop-Location }

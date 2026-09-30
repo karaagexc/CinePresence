@@ -17,3 +17,7 @@ The self-contained release includes Microsoft .NET components and Newtonsoft.Jso
 ## VLC and Windows
 
 CinePresence reads APIs provided by installed players and Windows. VLC is not bundled. Discord, Windows, VLC, and TMDB names and marks belong to their respective owners.
+
+## Installer
+
+The Windows installer is built with [Inno Setup](https://jrsoftware.org/), copyright Jordan Russell and Martijn Laan. Its license is included in `licenses/Inno-Setup.txt`.

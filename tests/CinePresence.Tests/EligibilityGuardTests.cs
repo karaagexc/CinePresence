@@ -73,7 +73,34 @@ public sealed class EligibilityGuardTests
     [Fact] public void UnknownBrowserOriginDoesNotBypassPlatformExclusions()
     {
         Assert.NotNull(MediaClassification.BrowserEligibility("msedge.exe", "Regular Show S06E13", captions: ["Inbox - Microsoft Edge"]).IgnoredReason);
-        Assert.NotNull(MediaClassification.BrowserEligibility("msedge.exe", "video", captions: ["A clip - YouTube - Microsoft Edge", "Show S01E01 - Microsoft Edge"]).IgnoredReason);
+        Assert.NotNull(MediaClassification.BrowserEligibility("msedge.exe", "video", captions: ["Another Show S02E01 - YouTube - Microsoft Edge", "Show S01E01 - Microsoft Edge"]).IgnoredReason);
+    }
+
+    [Theory]
+    [InlineData("YouTube - InPrivate - Microsoft Edge")]
+    [InlineData("Facebook - Microsoft Edge")]
+    [InlineData("A clip - YouTube - Microsoft Edge")]
+    public void GenericPlayerMetadataCanUseTheOnlyShowCaptionDespiteUnrelatedWindows(string unrelated)
+    {
+        var result = WindowTitlePolicy.ResolveMetadata("msedge.exe", "video", "", "", "",
+            [unrelated, "Regular Show - S6 - E13 and 2 more pages - Personal - Microsoft\u200b Edge"], true);
+        Assert.Null(result.IgnoredReason); Assert.False(result.RequiresConfirmation); Assert.True(result.FromWindow);
+        Assert.Equal(new("Regular Show", null, 6, 13), TitleParser.Parse(result.Title));
+    }
+
+    [Theory]
+    [InlineData("Facebook")]
+    [InlineData("Regular Show S06E13 - YouTube")]
+    public void ExplicitlyExcludedMetadataNeverFallsBackToAnotherShowWindow(string title)
+    {
+        var result = WindowTitlePolicy.ResolveMetadata("msedge.exe", title, "", "", "", ["Other Show S01E01 - Microsoft Edge"], true);
+        Assert.NotNull(result.IgnoredReason); Assert.False(result.FromWindow);
+    }
+
+    [Fact] public void UnknownMediaDoesNotBorrowATitleAcrossMultipleSessions()
+    {
+        var result = WindowTitlePolicy.ResolveMetadata("msedge.exe", "video", "", "", "", ["Show S01E01 - Microsoft Edge"], false);
+        Assert.False(result.FromWindow); Assert.Null(TitleParser.Parse(result.Title));
     }
 
     [Fact] public void LocalMovieNamedAfterAWebsiteRemainsEligible()
