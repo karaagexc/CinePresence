@@ -24,7 +24,7 @@ public sealed class PresenceEngine(IMediaResolver resolver, IPresencePublisher p
         lock (gate)
         {
             sharing = enabled; pinned = pinnedSession; excluded = excludedSources;
-            if (refresh) { CancelLookup(); source = null; media = null; }
+            if (refresh) { CancelLookup(); media = null; retryAt = DateTimeOffset.MinValue; Publish(null); }
             Reconcile();
         }
         Changed?.Invoke(this, EventArgs.Empty);
@@ -44,13 +44,16 @@ public sealed class PresenceEngine(IMediaResolver resolver, IPresencePublisher p
     private void Reconcile()
     {
         if (disposed) return;
-        var next = SourceSelector.Select(sources, pinned, excluded);
+        var next = SourceSelector.Select(sources, pinned, excluded, source);
         if (!sharing || next is null || next.Status != PlaybackStatus.Playing)
         {
             CancelLookup();
             source = next; media = null; retryAt = DateTimeOffset.MinValue;
             message = !sharing ? "Sharing is off. Your Discord presence is cleared." : next?.Status == PlaybackStatus.Paused
-                ? "Playback paused. Your Discord presence is cleared." : "Waiting for a recognizable movie or episode.";
+                ? "Playback paused. Your Discord presence is cleared."
+                : sources.Any(x => x.RequiresConfirmation) ? "This browser video has no clear movie or episode details. Confirm it with Correct match to share."
+                : sources.Any(x => x.IgnoredReason is not null) ? "Page names and social feeds are ignored. Play a recognizable movie, episode, or live show."
+                : "Waiting for a recognizable movie or episode.";
             Publish(null);
             return;
         }

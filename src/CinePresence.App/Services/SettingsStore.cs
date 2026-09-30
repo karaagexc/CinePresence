@@ -9,6 +9,7 @@ public sealed record AppSettings
 {
     public bool SharingEnabled { get; init; } = true;
     public bool StartWithWindows { get; init; }
+    public bool ShowWatchingPopup { get; init; } = true;
     public bool OnboardingComplete { get; init; }
     public string DiscordApplicationIdOverride { get; init; } = "";
     public string ProtectedTmdbToken { get; init; } = "";

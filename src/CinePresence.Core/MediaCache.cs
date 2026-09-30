@@ -45,6 +45,11 @@ public sealed class MediaCache
         }
     }
 
+    public bool HasCorrection(string key)
+    {
+        lock (gate) return data.Overrides.ContainsKey(Hash(key));
+    }
+
     public void Clear()
     {
         lock (gate) { data = new(); Save(); }

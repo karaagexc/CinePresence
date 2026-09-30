@@ -78,6 +78,36 @@ public sealed class PresenceTests
         Assert.Null(publisher.Last); clock.Now = clock.Now.AddSeconds(31);
         engine.Update([Fixture.Source()]); await Until(() => publisher.Last is not null);
     }
+    [Fact] public async Task FirstPlayingSourceStaysUntilPausedAndResumeDoesNotStealBack()
+    {
+        var publisher = new FakePublisher();
+        using var engine = new PresenceEngine(new ImmediateResolver(), publisher, new FakeClock());
+        var first = Fixture.Source() with { SessionId = "browser", SourceId = "edge" };
+        var second = first with { SessionId = "vlc", SourceId = "vlc", LastActiveAt = Fixture.Now.AddSeconds(10), IsSystemCurrent = true, Position = TimeSpan.FromSeconds(300) };
+        engine.Update([first]); await Until(() => publisher.Last is not null);
+        engine.Update([second, first]); Assert.Equal("browser", engine.View.Source!.SessionId);
+        engine.Configure(true, null, new HashSet<string>(), refresh: true);
+        Assert.Equal("browser", engine.View.Source!.SessionId);
+        engine.Update([first with { Status = PlaybackStatus.Paused }, second]);
+        Assert.Equal("vlc", engine.View.Source!.SessionId);
+        await Until(() => publisher.Last?.Start == Fixture.Now.AddSeconds(-300));
+        engine.Update([first with { LastActiveAt = Fixture.Now.AddSeconds(20), IsSystemCurrent = true }, second]);
+        Assert.Equal("vlc", engine.View.Source!.SessionId);
+        engine.Update([first, second with { Status = PlaybackStatus.Paused }]);
+        Assert.Equal("browser", engine.View.Source!.SessionId);
+        await Until(() => publisher.Last?.Start == Fixture.Now.AddSeconds(-100));
+        engine.Update([first with { Status = PlaybackStatus.Paused }, second with { Status = PlaybackStatus.Paused }]);
+        Assert.Null(publisher.Last);
+    }
+    [Fact] public void StoppedClosedOrExcludedSourceHandsOffToPlayingSource()
+    {
+        var first = Fixture.Source() with { SessionId = "first", SourceId = "first" };
+        var second = first with { SessionId = "second", SourceId = "second", LastActiveAt = Fixture.Now.AddSeconds(1) };
+        var empty = new HashSet<string>();
+        Assert.Equal(second, SourceSelector.Select([first with { Status = PlaybackStatus.Stopped }, second], null, empty, first));
+        Assert.Equal(second, SourceSelector.Select([second], null, empty, first));
+        Assert.Equal(second, SourceSelector.Select([first, second], null, new HashSet<string> { "first" }, first));
+    }
     private static async Task Until(Func<bool> ready)
     { for (var i = 0; i < 200 && !ready(); i++) await Task.Delay(10); Assert.True(ready(), "Timed out waiting for engine state."); }
     private sealed class FakeClock : TimeProvider { public DateTimeOffset Now = Fixture.Now; public override DateTimeOffset GetUtcNow() => Now; }

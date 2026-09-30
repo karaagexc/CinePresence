@@ -15,6 +15,7 @@ public partial class App : System.Windows.Application
     private AppController? controller;
     private Forms.NotifyIcon? tray;
     private MainWindow? window;
+    private WatchNotificationService? notifications;
     private bool quitting;
 
     protected override void OnStartup(StartupEventArgs e)
@@ -32,6 +33,7 @@ public partial class App : System.Windows.Application
             window = new(controller);
             MainWindow = window;
             CreateTray();
+            notifications = new(controller, Dispatcher, input => { if (!quitting) window.OpenCorrection(input); });
             controller.Start();
             if (!e.Args.Contains("--background") || !controller.Settings.OnboardingComplete) window.Show();
         }
@@ -77,6 +79,7 @@ public partial class App : System.Windows.Application
     {
         if (quitting) return;
         quitting = true;
+        notifications?.Dispose();
         if (window is not null) window.AllowClose = true;
         if (tray is not null) { tray.Visible = false; tray.Icon?.Dispose(); tray.Dispose(); }
         if (controller is not null) await controller.DisposeAsync();
@@ -95,7 +98,8 @@ public partial class App : System.Windows.Application
             window.Show();
             await Task.Delay(400);
             window.UpdateLayout();
-            window.CaptureSmoke(output);
+            var posterPath = args.SkipWhile(x => x != "--smoke-poster").Skip(1).FirstOrDefault();
+            await window.CaptureSmokeAsync(output, posterPath);
             await controller.DisposeAsync();
             window.Close(); Shutdown(0);
         }
@@ -112,15 +116,42 @@ public partial class App : System.Windows.Application
         if (string.IsNullOrWhiteSpace(output)) { Shutdown(2); return; }
         try
         {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(25));
             await using var windows = new WindowsMediaAdapter();
             var sessions = await windows.ReadAsync(timeout.Token);
-            using var discord = new DiscordPublisher(); discord.Connect(SettingsStore.ReleaseApplicationId());
-            for (var i = 0; i < 40 && !discord.Connected; i++) await Task.Delay(100, timeout.Token);
+            if (args.Contains("--sample"))
+                for (var i = 0; i < 5; i++) { await Task.Delay(2000, timeout.Token); sessions = await windows.ReadAsync(timeout.Token); }
+            using var discord = new DiscordPublisher();
+            if (!args.Contains("--media-only"))
+            {
+                discord.Connect(SettingsStore.ReleaseApplicationId());
+                for (var i = 0; i < 40 && !discord.Connected; i++) await Task.Delay(100, timeout.Token);
+            }
+            var lookups = new List<object>();
+            if (args.Contains("--resolve"))
+            {
+                var settingsStore = new SettingsStore();
+                var settings = settingsStore.Load();
+                var token = settingsStore.Unprotect(settings.ProtectedTmdbToken);
+                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
+                var resolver = new MediaResolver(new TmdbClient(http, () => token), new MediaCache());
+                foreach (var session in sessions)
+                {
+                    var parsed = TitleParser.Parse(session);
+                    if (parsed is null) continue;
+                    try
+                    {
+                        var media = await resolver.ResolveAsync(parsed, timeout.Token);
+                        lookups.Add(new { source = session.SourceName, hasToken = token.Length > 0, match = media });
+                    }
+                    catch (ServiceException ex) { lookups.Add(new { source = session.SourceName, hasToken = token.Length > 0, error = ex.Message }); }
+                }
+            }
             var report = new
             {
                 windows = windows.Status,
-                sessions = sessions.Select(x => new { player = x.SourceName, state = x.Status.ToString(), hasTitle = !string.IsNullOrWhiteSpace(x.Title), hasPosition = x.Position.HasValue, hasDuration = x.Duration.HasValue, isMusic = x.IsMusic }),
+                sessions = sessions.Select(x => new { player = x.SourceName, state = x.Status.ToString(), title = TitleParser.Parse(x.Title, x.Subtitle, x.AlbumTitle), titleFromWindow = x.TitleFromWindow, hasTitle = !string.IsNullOrWhiteSpace(x.Title), hasPosition = x.Position.HasValue, hasDuration = x.Duration.HasValue, positionSeconds = x.Position?.TotalSeconds, durationSeconds = x.Duration?.TotalSeconds, isLive = x.IsLive, isMusic = x.IsMusic, ignoredReason = x.IgnoredReason, requiresConfirmation = x.RequiresConfirmation, eligible = TitleParser.Parse(x) is not null }),
+                lookups,
                 discord = discord.Status,
                 discordConnected = discord.Connected,
                 presencePublished = false

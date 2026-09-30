@@ -6,7 +6,8 @@ $sdkPath = Join-Path $projectRoot '.tools\dotnet\dotnet.exe'
 $releaseConfig = Get-Content (Join-Path $projectRoot 'src\CinePresence.App\release.json') -Raw | ConvertFrom-Json
 if (-not $DiscordApplicationId) { $DiscordApplicationId = $releaseConfig.discordApplicationId }
 if ($DiscordApplicationId -notmatch '^\d{15,22}$') { throw 'A real public Discord application ID is required for a release.' }
-$outputPath = Join-Path $projectRoot 'artifacts\CinePresence-win-x64'
+$appVersion = ([xml](Get-Content (Join-Path $projectRoot 'Directory.Build.props') -Raw)).Project.PropertyGroup.Version
+$outputPath = Join-Path $projectRoot ('artifacts\CinePresence-' + $appVersion + '-win-x64')
 Push-Location $projectRoot
 try {
     & $sdkPath publish 'src\CinePresence.App\CinePresence.App.csproj' -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:PublishTrimmed=false -p:DebugType=None -o $outputPath
@@ -28,7 +29,7 @@ try {
     }
     New-Item -ItemType Directory -Force (Join-Path $outputPath 'docs') | Out-Null
     Copy-Item -Path (Join-Path $projectRoot 'docs\*.md') -Destination (Join-Path $outputPath 'docs')
-    $zipPath = Join-Path $projectRoot 'artifacts\CinePresence-0.1.0-win-x64.zip'
+    $zipPath = Join-Path $projectRoot ('artifacts\CinePresence-' + $appVersion + '-win-x64.zip')
     Compress-Archive -Path $outputPath -DestinationPath $zipPath -Force
     Get-FileHash -LiteralPath $zipPath -Algorithm SHA256 | ForEach-Object { $_.Hash + '  ' + (Split-Path $_.Path -Leaf) } | Set-Content (Join-Path $projectRoot 'artifacts\SHA256SUMS.txt')
     Write-Output $zipPath

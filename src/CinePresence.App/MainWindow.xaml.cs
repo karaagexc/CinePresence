@@ -16,6 +16,7 @@ public partial class MainWindow : Window
     private readonly HttpClient images = new() { Timeout = TimeSpan.FromSeconds(10) };
     private int refreshQueued;
     private string? posterUrl;
+    private MatchWindow? matchDialog;
     public bool AllowClose { get; set; }
 
     public MainWindow(AppController controller)
@@ -29,6 +30,7 @@ public partial class MainWindow : Window
         VlcPortBox.Text = controller.Settings.VlcPort.ToString();
         VlcPasswordBox.Password = controller.VlcPassword;
         StartupBox.IsChecked = controller.Settings.StartWithWindows;
+        PopupEnabledBox.IsChecked = controller.Settings.ShowWatchingPopup;
         OnboardingBanner.Visibility = controller.Settings.OnboardingComplete ? Visibility.Collapsed : Visibility.Visible;
         if (!controller.Settings.OnboardingComplete) Tabs.SelectedIndex = 2;
         SaveResult.Text = controller.Warning;
@@ -56,7 +58,7 @@ public partial class MainWindow : Window
         SourceList.ItemsSource = view.Sources.Select(x => new SourceRow(x.SessionId, x.SourceId,
             x.SourceName + (controller.Settings.ExcludedSources.Contains(x.SourceId) ? " · excluded" : ""),
             $"{x.Status} · {TitleParser.Parse(x.Title, x.Subtitle, x.AlbumTitle)?.Title ?? "Unidentified media"}",
-            $"{(x.Adapter == AdapterKind.Windows ? "Windows media session" : "Local VLC connection")} · {(x.Duration is not null && x.Position is not null ? "Timing available" : "Timing unavailable")}{(x.IsMusic ? " · audio, skipped" : "")}")).ToList();
+            $"{(x.Adapter == AdapterKind.Windows ? "Windows media session" : "Local VLC connection")} · {(x.IsLive ? "Live stream · no fixed end time" : x.Duration is not null && x.Position is not null ? "Timing available" : "Timing unavailable")}{(x.IsMusic ? " · known audio, skipped" : "")}{(x.TitleFromWindow ? " · title from active tab/window" : "")}{(x.IgnoredReason is not null ? " · " + x.IgnoredReason : x.RequiresConfirmation ? " · confirm movie/show before sharing" : "")}{(string.IsNullOrWhiteSpace(x.Title) ? " · title unavailable: select the playing tab" : "")}")).ToList();
         SourceList.SelectedItem = SourceList.Items.Cast<SourceRow>().FirstOrDefault(x => x.Id == selected);
         WindowsStatus.Text = controller.Windows.Status;
         VlcStatus.Text = controller.Vlc.Status;
@@ -67,16 +69,19 @@ public partial class MainWindow : Window
     {
         SourceBadge.Text = view.Source?.SourceName ?? "Waiting for playback";
         MediaTitle.Text = view.Media?.Title ?? (view.Source is not null ? TitleParser.Parse(view.Source)?.Title : null) ?? "Something good is next.";
-        MediaDescription.Text = view.Media?.Description ?? "Play a movie or episode in your favorite player.";
+        var isLive = view.Source?.IsLive == true;
+        MediaDescription.Text = (isLive ? "Live · " : "") + (view.Media?.Description ?? "Play a movie or episode in your favorite player.");
         PlaybackMessage.Text = view.Message;
-        CorrectButton.IsEnabled = view.Source is not null || view.Sources.Any(x => !x.IsMusic && !string.IsNullOrWhiteSpace(x.Title));
+        CorrectButton.IsEnabled = view.Source is not null || view.Sources.Any(x => !x.IsMusic && x.IgnoredReason is null && TitleParser.Parse(x.Title, x.Subtitle, x.AlbumTitle) is not null);
         TmdbButton.IsEnabled = view.Media is not null;
         var position = view.Source?.PositionSeconds(DateTimeOffset.UtcNow);
-        var duration = view.Source?.Duration?.TotalSeconds;
+        var duration = isLive ? null : view.Source?.Duration?.TotalSeconds;
+        PlaybackProgress.Visibility = isLive ? Visibility.Collapsed : Visibility.Visible;
         PlaybackProgress.Value = position is not null && duration is > 0 ? Math.Clamp(position.Value / duration.Value * 100, 0, 100) : 0;
-        ElapsedText.Text = FormatTime(position);
-        DurationText.Text = FormatTime(duration);
-        TimingNote.Text = position is not null && duration is > 0
+        ElapsedText.Text = isLive ? "● LIVE" : FormatTime(position);
+        DurationText.Text = isLive ? "" : FormatTime(duration);
+        TimingNote.Text = isLive ? "Live broadcast · no fixed end time. Your title and artwork are shared."
+            : position is not null && duration is > 0
             ? (view.Source!.PlaybackRate != 1 ? $"{view.Source.PlaybackRate:0.##}× speed · Discord's clock scales with playback." : "Live playback progress · synchronized with your player")
             : "Your player has not shared a complete playback timeline.";
         var url = view.Media?.PosterUrl;
@@ -143,7 +148,7 @@ public partial class MainWindow : Window
         try
         {
             if (!int.TryParse(VlcPortBox.Text, out var port)) throw new ServiceException("Enter a numeric VLC port.");
-            controller.SaveSettings(TokenBox.Password, AppIdBox.Text, VlcEnabledBox.IsChecked == true, port, VlcPasswordBox.Password, StartupBox.IsChecked == true);
+            controller.SaveSettings(TokenBox.Password, AppIdBox.Text, VlcEnabledBox.IsChecked == true, port, VlcPasswordBox.Password, StartupBox.IsChecked == true, PopupEnabledBox.IsChecked == true);
             SaveResult.Text = "Settings saved. CinePresence is ready.";
             OnboardingBanner.Visibility = controller.Settings.OnboardingComplete ? Visibility.Collapsed : Visibility.Visible;
             Refresh();
@@ -170,12 +175,21 @@ public partial class MainWindow : Window
     private void Correct_Click(object sender, RoutedEventArgs e)
     {
         var view = controller.Engine.View;
-        var source = view.Source ?? view.Sources.FirstOrDefault(x => !x.IsMusic && !string.IsNullOrWhiteSpace(x.Title));
+        var source = view.Source ?? view.Sources.FirstOrDefault(x => !x.IsMusic && x.IgnoredReason is null && TitleParser.Parse(x.Title, x.Subtitle, x.AlbumTitle) is not null);
         if (source is null) return;
         var parsed = TitleParser.Parse(source.Title, source.Subtitle, source.AlbumTitle);
         if (parsed is null) { MessageBox.Show("The player needs to provide a usable title before a correction can be remembered.", "CinePresence"); return; }
-        var dialog = new MatchWindow(controller, parsed) { Owner = this };
-        if (dialog.ShowDialog() == true) controller.RefreshMatch();
+        OpenCorrection(parsed);
+    }
+    public void OpenCorrection(ParsedTitle input)
+    {
+        Show(); WindowState = WindowState.Normal; Tabs.SelectedIndex = 0; Activate();
+        if (matchDialog is not null) { matchDialog.Activate(); return; }
+        // Keep the clicked title as the correction target even if playback
+        // advances while the user is searching. Never edit a different episode.
+        matchDialog = new MatchWindow(controller, input) { Owner = this };
+        try { if (matchDialog.ShowDialog() == true) controller.RefreshMatch(); }
+        finally { matchDialog = null; }
     }
     private void VlcGuide_Click(object sender, RoutedEventArgs e)
     {
@@ -194,7 +208,7 @@ public partial class MainWindow : Window
     }
 
     // Used by the command-line UI smoke test. No real presence is published.
-    public void CaptureSmoke(string directory)
+    public async Task CaptureSmokeAsync(string directory, string? posterPath = null)
     {
         Capture("onboarding.png");
         Tabs.SelectedIndex = 0;
@@ -203,10 +217,32 @@ public partial class MainWindow : Window
         var source = new PlaybackSnapshot("sample", "vlc", "VLC", AdapterKind.Vlc, "Example.Series.S02E04.mkv", "", "", "", false, PlaybackStatus.Playing, TimeSpan.FromMinutes(17), TimeSpan.FromMinutes(46), 1, now, now);
         ShowPlayback(new(source, new(1, MediaType.Tv, "Example Series", 2026, null, 2, 4, "A New Beginning"), "Preview fixture · no activity published", true, false, [source]));
         Capture("now-playing-fixture.png");
+        var live = source with { Title = "Watch Example Live Show live stream for free on stream.example", IsLive = true };
+        ShowPlayback(new(live, new(2, MediaType.Tv, "Example Live Show", 2026, null), "Live fixture · no activity published", true, false, [live]));
+        Capture("now-playing-live.png");
+        var popupClicked = false;
+        var notice = new WatchNotice(new("Regular Show", null, 6, 13), new(1, MediaType.Tv, "Regular Show", 2010, null, 6, 13, "Mordecai and Rigby Down Under"), false);
+        var popup = new WatchPopup(notice, input => popupClicked = input == notice.Input);
+        if (!string.IsNullOrWhiteSpace(posterPath) && File.Exists(posterPath))
+        {
+            var bitmap = new BitmapImage(); bitmap.BeginInit(); bitmap.CacheOption = BitmapCacheOption.OnLoad;
+            bitmap.UriSource = new Uri(Path.GetFullPath(posterPath)); bitmap.EndInit(); bitmap.Freeze();
+            popup.ShowArtwork.Source = bitmap;
+        }
+        popup.Show(); await Task.Delay(350); popup.Capture(Path.Combine(directory, "watching-popup.png"));
+        popup.ChangeMatchButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        await Task.Delay(250);
+        if (!popupClicked) throw new InvalidOperationException("Popup did not pass its captured title to correction.");
+        var timedPopup = new WatchPopup(notice, _ => { });
+        var timer = Stopwatch.StartNew();
+        timedPopup.Show();
+        while (timedPopup.IsVisible && timer.Elapsed < TimeSpan.FromSeconds(10)) await Task.Delay(100);
+        if (timedPopup.IsVisible) { timedPopup.Close(); throw new InvalidOperationException("Popup did not auto-dismiss."); }
+        if (timer.Elapsed.TotalSeconds is < 6.5 or > 9) throw new InvalidOperationException("Popup dismissal timing is outside tolerance.");
         SourceList.ItemsSource = new[] { new SourceRow("sample", "vlc", "VLC", "Playing · Example Series", "Local VLC connection · Timing available") };
         Tabs.SelectedIndex = 1; Capture("sources.png");
         Tabs.SelectedIndex = 2; SettingsScroll.ScrollToEnd(); Capture("settings-bottom.png");
-        File.WriteAllText(Path.Combine(directory, "smoke-ok.txt"), "Rendered onboarding, empty state, fixture presence, sources, and settings. No external service was contacted.");
+        File.WriteAllText(Path.Combine(directory, "smoke-ok.txt"), $"Rendered app and compact artwork popup. Animated correction action passed; automatic dismissal completed after {timer.Elapsed.TotalSeconds:0.00}s. No external service was contacted.");
         void Capture(string name)
         {
             UpdateLayout();

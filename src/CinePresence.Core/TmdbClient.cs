@@ -126,7 +126,7 @@ public sealed class MediaResolver(TmdbClient client, MediaCache cache, TimeProvi
     public static IEnumerable<MediaCandidate> Rank(ParsedTitle input, IEnumerable<MediaCandidate> candidates) =>
         candidates.Where(x => !input.HasEpisode || x.Type == MediaType.Tv)
             .Select(x => (Candidate: x, Similarity: Math.Max(Similarity(input.Title, x.Title), Similarity(input.Title, x.OriginalTitle))))
-            .Where(x => x.Similarity >= 0.6)
+            .Where(x => x.Similarity >= (input.HasEpisode || input.Year.HasValue ? 0.75 : 0.9))
             .OrderByDescending(x => x.Similarity + (input.Year.HasValue && x.Candidate.Year.HasValue
                 ? input.Year == x.Candidate.Year ? 0.4 : -Math.Min(0.4, Math.Abs(input.Year.Value - x.Candidate.Year.Value) * 0.04) : 0))
             .ThenBy(x => x.Candidate.Type).ThenBy(x => x.Candidate.Id).Select(x => x.Candidate);

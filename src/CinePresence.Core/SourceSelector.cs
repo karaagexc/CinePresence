@@ -22,12 +22,21 @@ public static class SourceSelector
     }
 
     public static PlaybackSnapshot? Select(IEnumerable<PlaybackSnapshot> snapshots, string? pinnedSession,
-        IReadOnlySet<string> excludedSources)
+        IReadOnlySet<string> excludedSources, PlaybackSnapshot? current = null)
     {
-        var eligible = Deduplicate(snapshots).Where(x => !excludedSources.Contains(x.SourceId) && TitleParser.Parse(x) is not null);
+        var eligible = Deduplicate(snapshots).Where(x => !excludedSources.Contains(x.SourceId) && TitleParser.Parse(x) is not null).ToList();
         if (!string.IsNullOrEmpty(pinnedSession)) return eligible.FirstOrDefault(x => x.SessionId == pinnedSession);
-        return eligible.Where(x => x.Status == PlaybackStatus.Playing)
-            .OrderByDescending(x => x.IsSystemCurrent).ThenByDescending(x => x.LastActiveAt)
-            .ThenBy(x => x.SessionId, StringComparer.Ordinal).FirstOrDefault();
+        var playing = eligible.Where(x => x.Status == PlaybackStatus.Playing).ToList();
+        // Keep the selected player until it pauses, stops, disappears, or becomes
+        // ineligible. Changes to Windows' media-key focus must not steal presence.
+        if (current is not null)
+        {
+            var retained = playing.FirstOrDefault(x => x.SessionId == current.SessionId);
+            retained ??= playing.FirstOrDefault(x => x.IsVlc && current.IsVlc && SameItem(x, current));
+            if (retained is not null) return retained;
+        }
+        // Adapters retain LastActiveAt for each uninterrupted playing interval.
+        // If starts are indistinguishable, preserve first-observed list order.
+        return playing.OrderBy(x => x.LastActiveAt).FirstOrDefault();
     }
 }

@@ -70,7 +70,7 @@ public sealed class AppController : IAsyncDisposable
                 lock (snapshotsGate)
                 {
                     snapshots[adapter] = current;
-                    Engine.Update(snapshots.Values.SelectMany(x => x).ToList());
+                    Engine.Update(PrepareSources());
                 }
                 try { await signal.WaitAsync(TimeSpan.FromSeconds(1), lifetime.Token).ConfigureAwait(false); }
                 catch (OperationCanceledException) { break; }
@@ -78,7 +78,7 @@ public sealed class AppController : IAsyncDisposable
         }));
     }
 
-    public void SaveSettings(string tmdbToken, string applicationIdOverride, bool vlcEnabled, int port, string password, bool startup)
+    public void SaveSettings(string tmdbToken, string applicationIdOverride, bool vlcEnabled, int port, string password, bool startup, bool showWatchingPopup = true)
     {
         tmdbToken = tmdbToken.Trim(); applicationIdOverride = applicationIdOverride.Trim();
         if (tmdbToken.Any(char.IsWhiteSpace)) throw new ServiceException("The TMDB token should not contain spaces or line breaks.");
@@ -91,7 +91,7 @@ public sealed class AppController : IAsyncDisposable
             ProtectedTmdbToken = SettingsStore.Protect(tmdbToken),
             DiscordApplicationIdOverride = applicationIdOverride,
             VlcEnabled = vlcEnabled, VlcPort = port, ProtectedVlcPassword = SettingsStore.Protect(password),
-            StartWithWindows = startup, OnboardingComplete = tmdbToken.Length > 0
+            StartWithWindows = startup, ShowWatchingPopup = showWatchingPopup, OnboardingComplete = tmdbToken.Length > 0
         };
         if (Settings.StartWithWindows != startup) SettingsStore.SetStartup(startup);
         store.Save(settings); Settings = settings;
@@ -124,7 +124,23 @@ public sealed class AppController : IAsyncDisposable
         store.Save(Settings);
     }
 
-    public void RefreshMatch() => Engine.Configure(Settings.SharingEnabled, pinnedSession, Settings.ExcludedSources, true);
+    private IReadOnlyList<PlaybackSnapshot> PrepareSources() => snapshots.Values.SelectMany(x => x).Select(source =>
+    {
+        var parsed = TitleParser.Parse(source.Title, source.Subtitle, source.AlbumTitle);
+        // Only an explicit correction can approve ambiguous browser metadata.
+        // An old automatic cache entry must never bypass the guard.
+        return source.RequiresConfirmation && source.IgnoredReason is null && parsed is not null && Cache.HasCorrection(parsed.Key)
+            ? source with { RequiresConfirmation = false } : source;
+    }).ToList();
+
+    public void RefreshMatch()
+    {
+        lock (snapshotsGate)
+        {
+            Engine.Configure(Settings.SharingEnabled, pinnedSession, Settings.ExcludedSources, true);
+            Engine.Update(PrepareSources());
+        }
+    }
     public async ValueTask DisposeAsync()
     {
         lifetime.Cancel(); Engine.Dispose();

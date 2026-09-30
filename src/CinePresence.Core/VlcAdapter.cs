@@ -11,6 +11,7 @@ public sealed class VlcAdapter(HttpClient http, Func<VlcOptions> options, TimePr
 {
     private readonly TimeProvider clock = clock ?? TimeProvider.System;
     private PlaybackSnapshot? previous;
+    private readonly LiveTimelineDetector liveTimeline = new();
     public event EventHandler? Changed { add { } remove { } }
     public string Status { get; private set; } = "VLC HTTP is off; Windows detection is still available.";
 
@@ -73,11 +74,13 @@ public sealed class VlcAdapter(HttpClient http, Func<VlcOptions> options, TimePr
             var itemId = ReadNumber(root, "currentplid")?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "";
             var duration = ReadNumber(root, "length");
             var position = ReadNumber(root, "time");
-            var changed = previous is null || previous.Title != title || previous.ItemId != itemId || previous.Status != state;
+            var changed = previous is null || previous.Status != state;
+            var isLive = liveTimeline.Observe(title + "|" + itemId, TimeSpan.FromSeconds(position ?? 0),
+                TimeSpan.FromSeconds(duration ?? 0), TimeSpan.Zero, now, StreamingTitle.Read(title).IsLive);
             return new("vlc-http", "vlc", "VLC", AdapterKind.Vlc, title, subtitle, album, artist, music, state,
                 position is >= 0 ? TimeSpan.FromSeconds(position.Value) : null,
                 duration is > 0 ? TimeSpan.FromSeconds(duration.Value) : null,
-                ReadNumber(root, "rate") ?? 1, now, changed ? now : previous!.LastActiveAt, false, itemId);
+                ReadNumber(root, "rate") ?? 1, now, changed ? now : previous!.LastActiveAt, false, itemId, IsLive: isLive);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested) { throw new ServiceException("VLC did not respond. Check that it is running and HTTP is enabled."); }
         catch (HttpRequestException) { throw new ServiceException("Cannot connect to VLC. Open VLC or follow the setup guide."); }

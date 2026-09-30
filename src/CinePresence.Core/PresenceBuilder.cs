@@ -6,14 +6,14 @@ public static class PresenceBuilder
     {
         DateTimeOffset? start = null, end = null;
         var position = source.PositionSeconds(now);
-        if (position is not null && source.Duration is { TotalSeconds: > 0 } duration && duration.TotalDays < 7)
+        if (!source.IsLive && position is not null && source.Duration is { TotalSeconds: > 0 } duration && duration.TotalDays < 7)
         {
             var rate = double.IsFinite(source.PlaybackRate) && source.PlaybackRate > 0 ? source.PlaybackRate : 1;
             rate = Math.Clamp(rate, 0.1, 16);
             start = now.AddSeconds(-position.Value / rate);
             end = now.AddSeconds((duration.TotalSeconds - position.Value) / rate);
         }
-        return new(Truncate(media.Title, 128), Truncate(media.Description, 128), media.Url, media.PosterUrl, start, end);
+        return new(Truncate(media.Title, 128), Truncate((source.IsLive ? "Live · " : "") + media.Description, 128), media.Url, media.PosterUrl, start, end);
     }
 
     private static string Truncate(string value, int length)

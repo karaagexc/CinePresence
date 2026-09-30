@@ -9,7 +9,8 @@ public sealed record PlaybackSnapshot(
     string Title, string Subtitle, string AlbumTitle, string Artist,
     bool IsMusic, PlaybackStatus Status, TimeSpan? Position, TimeSpan? Duration,
     double PlaybackRate, DateTimeOffset ObservedAt, DateTimeOffset LastActiveAt,
-    bool IsSystemCurrent = false, string ItemId = "")
+    bool IsSystemCurrent = false, string ItemId = "", bool TitleFromWindow = false, bool IsLive = false,
+    string? IgnoredReason = null, bool RequiresConfirmation = false)
 {
     public string Identity => $"{SessionId}|{Title}|{Subtitle}|{AlbumTitle}|{ItemId}";
     public bool IsVlc => Adapter == AdapterKind.Vlc || SourceId.Contains("vlc", StringComparison.OrdinalIgnoreCase);

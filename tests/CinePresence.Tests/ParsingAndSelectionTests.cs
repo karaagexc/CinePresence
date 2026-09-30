@@ -34,14 +34,32 @@ public sealed class ParsingAndSelectionTests
     [Fact] public void RejectsUnrelatedSearchResults() => Assert.Empty(MediaResolver.Rank(new("Private holiday recording", null, null, null), [new(1, MediaType.Movie, "Dune", "Dune", 2021, null)]));
     [Fact] public void EpisodesOnlyMatchSeries() => Assert.Empty(MediaResolver.Rank(new("Dune", null, 1, 1), [new(1, MediaType.Movie, "Dune", "Dune", 2021, null)]));
     [Fact] public void OriginalTitleAndAccentsCanMatch() => Assert.Single(MediaResolver.Rank(new("Amelie", null, null, null), [new(1, MediaType.Movie, "Localized title", "Amélie", 2001, null)]));
-    [Fact] public void PrefersCurrentWindowsSessionAndHonorsExclusions()
+    [Fact] public void PrefersFirstPlayingSessionAndHonorsExclusionsAndPins()
     {
-        var first = Fixture.Source() with { IsSystemCurrent = true, SessionId = "first", SourceId = "chrome" };
-        var second = Fixture.Source() with { SessionId = "second", SourceId = "vlc", LastActiveAt = Fixture.Now.AddMinutes(1) };
-        Assert.Equal("first", SourceSelector.Select([first, second], null, new HashSet<string>())!.SessionId);
+        var first = Fixture.Source() with { SessionId = "first", SourceId = "chrome" };
+        var second = Fixture.Source() with { SessionId = "second", SourceId = "vlc", IsSystemCurrent = true, LastActiveAt = Fixture.Now.AddMinutes(1) };
+        Assert.Equal("first", SourceSelector.Select([second, first], null, new HashSet<string>())!.SessionId);
         Assert.Equal("second", SourceSelector.Select([first, second], null, new HashSet<string> { "chrome" })!.SessionId);
         Assert.Equal("second", SourceSelector.Select([first, second], "second", new HashSet<string>())!.SessionId);
         Assert.Null(SourceSelector.Select([first], "missing", new HashSet<string>()));
+    }
+    [Fact] public void SimultaneousStartsPreserveFirstObservedOrder()
+    {
+        var first = Fixture.Source() with { SessionId = "z-first" };
+        var second = first with { SessionId = "a-second", IsSystemCurrent = true };
+        Assert.Equal(first, SourceSelector.Select([first, second], null, new HashSet<string>()));
+    }
+    [Fact] public void PinnedPausedSourceRemainsExplicitlySelected()
+    {
+        var paused = Fixture.Source() with { SessionId = "paused", Status = PlaybackStatus.Paused };
+        Assert.Equal(paused, SourceSelector.Select([Fixture.Source(), paused], "paused", new HashSet<string>()));
+    }
+    [Fact] public void ActiveVlcRetainsSelectionWhenHttpAdapterBecomesAvailable()
+    {
+        var windows = Fixture.Source() with { SessionId = "windows-vlc", SourceId = "vlc" };
+        var http = windows with { SessionId = "vlc-http", Adapter = AdapterKind.Vlc, LastActiveAt = Fixture.Now.AddMinutes(1) };
+        var browser = Fixture.Source() with { SessionId = "browser", SourceId = "msedge", Title = "Arrival (2016)" };
+        Assert.Equal("vlc-http", SourceSelector.Select([browser, windows, http], null, new HashSet<string>(), windows)!.SessionId);
     }
     [Fact] public void DedupeTransfersWindowsFocusToPreciseVlcAdapter()
     {

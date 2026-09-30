@@ -1,5 +1,4 @@
 using System.Runtime.InteropServices;
-using Windows.Media;
 using Windows.Media.Control;
 
 namespace CinePresence.App.Services;
@@ -11,6 +10,7 @@ public sealed class WindowsMediaAdapter : IPlaybackAdapter
         public GlobalSystemMediaTransportControlsSession Session { get; } = session;
         public string Id { get; } = id;
         public PlaybackSnapshot? Previous { get; set; }
+        public LiveTimelineDetector LiveTimeline { get; } = new();
     }
     private GlobalSystemMediaTransportControlsSessionManager? manager;
     private readonly Dictionary<GlobalSystemMediaTransportControlsSession, Entry> entries = [];
@@ -67,14 +67,29 @@ public sealed class WindowsMediaAdapter : IPlaybackAdapter
                     var rawPosition = timeline.Position - timeline.StartTime;
                     var hasTimeline = timeline.LastUpdatedTime != default && rawPosition >= TimeSpan.Zero;
                     var previous = entry.Previous;
-                    var itemChanged = previous is null || previous.Title != metadata.Title || previous.Subtitle != metadata.Subtitle || previous.Status != state;
                     var sourceId = session.SourceAppUserModelId.Contains("vlc", StringComparison.OrdinalIgnoreCase) ? "vlc" : session.SourceAppUserModelId;
+                    var title = metadata.Title ?? "";
+                    var titleFromWindow = false;
+                    var captions = WindowTitleReader.ReadCaptions(session.SourceAppUserModelId);
+                    var eligibility = MediaClassification.BrowserEligibility(sourceId, title, metadata.Subtitle ?? "", metadata.AlbumTitle ?? "", metadata.Artist ?? "", captions);
+                    var parsedMetadata = TitleParser.Parse(title, metadata.Subtitle ?? "", metadata.AlbumTitle ?? "");
+                    if (eligibility.IgnoredReason is null && sessions.Count(x => x.SourceAppUserModelId == session.SourceAppUserModelId) == 1)
+                    {
+                        var caption = WindowTitlePolicy.Resolve(captions);
+                        if (caption is not null && WindowTitlePolicy.AddsUsefulMetadata(parsedMetadata, caption))
+                        { title = caption; titleFromWindow = true; }
+                    }
+                    eligibility = MediaClassification.BrowserEligibility(sourceId, title, metadata.Subtitle ?? "", metadata.AlbumTitle ?? "", metadata.Artist ?? "", captions);
+                    var stateChanged = previous is null || previous.Status != state;
+                    var isLive = entry.LiveTimeline.Observe(TitleParser.Parse(title, metadata.Subtitle ?? "", metadata.AlbumTitle ?? "")?.Key ?? title,
+                        timeline.Position, timeline.EndTime, timeline.MinSeekTime, now, StreamingTitle.Read(title).IsLive);
                     var snapshot = new PlaybackSnapshot(entry.Id, sourceId, FriendlyName(session.SourceAppUserModelId), AdapterKind.Windows,
-                        metadata.Title ?? "", metadata.Subtitle ?? "", metadata.AlbumTitle ?? "", metadata.Artist ?? "",
-                        metadata.PlaybackType == MediaPlaybackType.Music, state,
+                        title, metadata.Subtitle ?? "", metadata.AlbumTitle ?? "", metadata.Artist ?? "",
+                        MediaClassification.IsClearlyAudio(sourceId, title), state,
                         hasTimeline ? rawPosition : null, duration > TimeSpan.Zero && duration.TotalDays < 7 ? duration : null,
-                        playback.PlaybackRate ?? 1, observed, itemChanged ? now : previous!.LastActiveAt,
-                        Equals(session, current));
+                        playback.PlaybackRate ?? 1, observed, stateChanged ? now : previous!.LastActiveAt,
+                        Equals(session, current), TitleFromWindow: titleFromWindow, IsLive: isLive,
+                        IgnoredReason: eligibility.IgnoredReason, RequiresConfirmation: eligibility.RequiresConfirmation);
                     entry.Previous = snapshot;
                     snapshots.Add(snapshot);
                 }

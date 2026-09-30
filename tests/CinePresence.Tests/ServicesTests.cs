@@ -85,9 +85,11 @@ public sealed class ServicesTests
             var protectedValue = SettingsStore.Protect("private-test-token");
             Assert.NotEqual("private-test-token", protectedValue);
             Assert.Equal("private-test-token", store.Unprotect(protectedValue));
-            store.Save(new() { ProtectedTmdbToken = protectedValue, ExcludedSources = ["spotify"] });
+            Assert.True(store.Load().ShowWatchingPopup);
+            store.Save(new() { ProtectedTmdbToken = protectedValue, ExcludedSources = ["spotify"], ShowWatchingPopup = false });
             Assert.DoesNotContain("private-test-token", File.ReadAllText(Path.Combine(directory, "settings.json")));
             Assert.Contains("spotify", store.Load().ExcludedSources);
+            Assert.False(store.Load().ShowWatchingPopup);
             Assert.Equal("", store.Unprotect("invalid encrypted text")); Assert.NotEmpty(store.Warning);
         }
         finally { var path = Path.Combine(directory, "settings.json"); if (File.Exists(path)) File.Delete(path); if (Directory.Exists(directory)) Directory.Delete(directory); }

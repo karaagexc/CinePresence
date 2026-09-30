@@ -6,7 +6,7 @@ namespace CinePresence.Core;
 
 public static partial class TitleParser
 {
-    [GeneratedRegex(@"(?i)\bS(?<s>\d{1,2})[\s._-]*E(?<e>\d{1,3})\b|\b(?<s>\d{1,2})x(?<e>\d{1,3})\b|\bSeason[\s._-]*(?<s>\d{1,2})[\s._-]*(?:Episode|Ep)[\s._-]*(?<e>\d{1,3})\b")]
+    [GeneratedRegex(@"(?i)\bS(?<s>\d{1,2})[\s.:_-]*E(?<e>\d{1,3})\b|\b(?<s>\d{1,2})x(?<e>\d{1,3})\b|\bSeason[\s._-]*(?<s>\d{1,2})[\s._-]*(?:Episode|Ep)[\s._-]*(?<e>\d{1,3})\b")]
     private static partial Regex EpisodePattern();
     [GeneratedRegex(@"(?i)\b(?:2160p|1080[pi]|720p|480p|4k|8k|BluRay|BRRip|BDRip|WEB[ ._-]?DL|WEBRip|HDTV|DVDRip|REMUX|x26[45]|h[ .]?26[45]|HEVC|AVC|AAC\d?|DDP?\d?|DTS|10bit|HDR10?|DV)\b")]
     private static partial Regex ReleasePattern();
@@ -21,7 +21,8 @@ public static partial class TitleParser
 
     public static ParsedTitle? Parse(PlaybackSnapshot snapshot)
     {
-        if (snapshot.IsMusic || IsKnownMusicSource(snapshot.SourceId)) return null;
+        if (snapshot.IsMusic || IsKnownMusicSource(snapshot.SourceId) || snapshot.IgnoredReason is not null || snapshot.RequiresConfirmation ||
+            MediaClassification.BrowserEligibility(snapshot.SourceId, snapshot.Title, snapshot.Subtitle, snapshot.AlbumTitle).IgnoredReason is not null) return null;
         return Parse(snapshot.Title, snapshot.Subtitle, snapshot.AlbumTitle);
     }
 
@@ -29,11 +30,12 @@ public static partial class TitleParser
     {
         if (string.IsNullOrWhiteSpace(raw)) return null;
         var text = raw.Trim();
-        if (Uri.TryCreate(text, UriKind.Absolute, out var uri))
+        if (Uri.TryCreate(text, UriKind.Absolute, out var uri) && (uri.IsFile || uri.Scheme is "http" or "https"))
             text = Uri.UnescapeDataString(uri.IsFile ? uri.LocalPath : uri.AbsolutePath);
         // Only take a basename when the source actually looks like a file path.
         if (text.Contains('\\') || text.Contains('/') && ExtensionPattern().IsMatch(text))
             text = text.Replace('\\', '/').Split('/').Last();
+        text = StreamingTitle.Read(text).Title;
         text = ExtensionPattern().Replace(text, "");
         text = SourceSuffix().Replace(text, "").Replace('_', ' ');
         // Dots in release filenames are separators, but preserve ordinary punctuation.
@@ -60,7 +62,7 @@ public static partial class TitleParser
             }
         }
         text = Spaces().Replace(text.Replace('.', ' '), " ").Trim(' ', '-', '–', '—', '|', '[', ']', '(', ')');
-        if (text.Length < 2 || Normalize(text) is "video" or "media player" or "vlc media player" or "untitled" or "unknown" or "playback") return null;
+        if (text.Length < 2 || Normalize(text) is "video" or "media" or "media player" or "vlc media player" or "untitled" or "unknown" or "playback" or "microsoft edge" or "google chrome" or "firefox") return null;
         return new(text, year, season, episode);
     }
 
