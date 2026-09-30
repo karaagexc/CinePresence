@@ -10,9 +10,9 @@ public sealed record PlaybackSnapshot(
     bool IsMusic, PlaybackStatus Status, TimeSpan? Position, TimeSpan? Duration,
     double PlaybackRate, DateTimeOffset ObservedAt, DateTimeOffset LastActiveAt,
     bool IsSystemCurrent = false, string ItemId = "", bool TitleFromWindow = false, bool IsLive = false,
-    string? IgnoredReason = null, bool RequiresConfirmation = false)
+    string? IgnoredReason = null, bool RequiresConfirmation = false, MediaType? TypeHint = null, int? TmdbIdHint = null)
 {
-    public string Identity => $"{SessionId}|{Title}|{Subtitle}|{AlbumTitle}|{ItemId}";
+    public string Identity => $"{SessionId}|{Title}|{Subtitle}|{AlbumTitle}|{ItemId}|{TypeHint}|{TmdbIdHint}";
     public bool IsVlc => Adapter == AdapterKind.Vlc || SourceId.Contains("vlc", StringComparison.OrdinalIgnoreCase);
     public double? PositionSeconds(DateTimeOffset now)
     {
@@ -24,10 +24,10 @@ public sealed record PlaybackSnapshot(
     }
 }
 
-public sealed record ParsedTitle(string Title, int? Year, int? Season, int? Episode)
+public sealed record ParsedTitle(string Title, int? Year, int? Season, int? Episode, MediaType? TypeHint = null, int? TmdbIdHint = null)
 {
     public bool HasEpisode => Season.HasValue && Episode.HasValue;
-    public string Key => $"{TitleParser.Normalize(Title)}|{Year}|{Season}|{Episode}";
+    public string Key => $"{TitleParser.Normalize(Title)}|{Year}|{Season}|{Episode}" + (TypeHint is null && TmdbIdHint is null ? "" : $"|{TypeHint}|{TmdbIdHint}");
 }
 
 public sealed record MediaCandidate(int Id, MediaType Type, string Title, string OriginalTitle, int? Year, string? PosterPath)
@@ -69,4 +69,7 @@ public interface IPlaybackAdapter : IAsyncDisposable
     Task<IReadOnlyList<PlaybackSnapshot>> ReadAsync(CancellationToken cancellationToken);
 }
 
-public sealed class ServiceException(string message) : Exception(message);
+public sealed class ServiceException(string message, System.Net.HttpStatusCode? statusCode = null) : Exception(message)
+{
+    public System.Net.HttpStatusCode? StatusCode { get; } = statusCode;
+}

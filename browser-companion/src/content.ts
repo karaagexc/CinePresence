@@ -1,12 +1,13 @@
 (() => {
   const M = globalThis.CinePresenceMetadata;
-  let invalid = false, timer, lastMetadataAt = 0, titles = [], watched = new WeakSet();
+  let invalid = false, timer: number | undefined, lastMetadataAt = 0, lastPage = ""; let titles: CinePresence.Title[] = []; const watched = new WeakSet<HTMLVideoElement>();
   function send() {
     if (invalid) return;
     // The worker checks both the top-level and iframe domains again.
     if (M.excluded(M.host(location.href))) return;
     const now = Date.now();
-    if (now - lastMetadataAt > 2000) { titles = M.collect(document, navigator); lastMetadataAt = now; }
+    const currentPage = location.href;
+    if (currentPage !== lastPage || now - lastMetadataAt > 2000) { titles = M.collect(document, navigator, currentPage); lastMetadataAt = now; lastPage = currentPage; }
     const videos = [...document.querySelectorAll("video")].filter(v => {
       const r = v.getBoundingClientRect();
       return r.width >= 120 && r.height >= 70 && v.readyState >= 1;

@@ -14,7 +14,7 @@ public sealed class BrowserCompanionTests
     [Fact] public void EpisodeComesFromStructuredPageAndTimingComesFromPlayer()
     {
         var item = BrowserMediaPolicy.Create(Batch(), Item(), Fixture.Now, null)!;
-        Assert.Equal(new("Regular Show", null, 6, 13), TitleParser.Parse(item));
+        Assert.Equal(new("Regular Show", null, 6, 13, MediaType.Tv), TitleParser.Parse(item));
         Assert.Equal(70, item.Position?.TotalSeconds); Assert.Equal(673, item.Duration?.TotalSeconds);
     }
     [Theory]

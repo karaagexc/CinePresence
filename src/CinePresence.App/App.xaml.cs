@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Drawing;
-using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
@@ -66,19 +65,10 @@ public partial class App : System.Windows.Application
 
     private static Icon CreateIcon()
     {
-        using var bitmap = new Bitmap(64, 64);
-        using var graphics = Graphics.FromImage(bitmap);
-        graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-        graphics.Clear(Color.Transparent);
-        using var purple = new SolidBrush(Color.FromArgb(181, 162, 255));
-        using var ink = new SolidBrush(Color.FromArgb(23, 17, 36));
-        graphics.FillEllipse(purple, 2, 2, 60, 60);
-        graphics.FillPolygon(ink, [new System.Drawing.Point(26, 17), new System.Drawing.Point(26, 47), new System.Drawing.Point(46, 32)]);
-        var handle = bitmap.GetHicon();
-        try { using var icon = Icon.FromHandle(handle); return (Icon)icon.Clone(); }
-        finally { DestroyIcon(handle); }
+        using var stream = GetResourceStream(new Uri("pack://application:,,,/Assets/CinePresence.ico"))!.Stream;
+        using var icon = new Icon(stream, 32, 32);
+        return (Icon)icon.Clone();
     }
-    [DllImport("user32.dll")] private static extern bool DestroyIcon(IntPtr handle);
 
     private async void Quit()
     {

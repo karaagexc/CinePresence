@@ -127,7 +127,7 @@ public sealed class AppController : IAsyncDisposable
 
     private IReadOnlyList<PlaybackSnapshot> PrepareSources() => SourceSelector.ApplyBrowserAuthority(snapshots.Values.SelectMany(x => x), Browser.ConnectedBrowsers).Select(source =>
     {
-        var parsed = TitleParser.Parse(source.Title, source.Subtitle, source.AlbumTitle);
+        var parsed = TitleParser.ParseInput(source);
         // Only an explicit correction can approve ambiguous browser metadata.
         // An old automatic cache entry must never bypass the guard.
         return source.RequiresConfirmation && source.IgnoredReason is null && parsed is not null && Cache.HasCorrection(parsed.Key)

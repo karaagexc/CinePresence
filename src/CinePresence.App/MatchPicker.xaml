@@ -1,0 +1,22 @@
+<UserControl x:Class="CinePresence.App.MatchPicker"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Foreground="{StaticResource TextBrush}">
+ <Grid>
+  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+  <StackPanel Margin="0,0,0,12"><TextBlock Text="Find what's playing" FontSize="21" FontWeight="SemiBold"/><TextBlock x:Name="Detected" Style="{StaticResource Muted}" Margin="0,4,0,0" TextTrimming="CharacterEllipsis" MaxHeight="36"/></StackPanel>
+  <DockPanel Grid.Row="1" Margin="0,0,0,12"><Button x:Name="Search" Content="Search" DockPanel.Dock="Right" Margin="8,0,0,0" Padding="12,8"/><TextBox x:Name="Query" AutomationProperties.Name="Search movie or series"/></DockPanel>
+  <ListBox x:Name="Results" Grid.Row="2" MinHeight="100" MaxHeight="280" AutomationProperties.Name="Movie and series matches" ScrollViewer.VerticalScrollBarVisibility="Auto">
+   <ListBox.ItemTemplate><DataTemplate><Grid>
+    <Grid.ColumnDefinitions><ColumnDefinition Width="44"/><ColumnDefinition Width="12"/><ColumnDefinition/></Grid.ColumnDefinitions>
+    <Border Width="44" Height="66" CornerRadius="5" Background="#2B263E"><Grid><TextBlock Text="▶" Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/><Image Source="{Binding Poster}" Stretch="UniformToFill"/></Grid></Border>
+    <StackPanel Grid.Column="2" VerticalAlignment="Center"><TextBlock Text="{Binding Candidate.Title}" FontWeight="SemiBold" FontSize="14" MaxHeight="40" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding Detail}" Style="{StaticResource Muted}" Margin="0,4,0,0"/></StackPanel>
+   </Grid></DataTemplate></ListBox.ItemTemplate>
+  </ListBox>
+  <StackPanel x:Name="EpisodeFields" Grid.Row="3" Orientation="Horizontal" Margin="0,12,0,0">
+   <TextBlock Text="Season" VerticalAlignment="Center" Margin="0,0,8,0"/><TextBox x:Name="Season" Width="64" MaxLength="3" AutomationProperties.Name="Season number"/>
+   <TextBlock Text="Episode" VerticalAlignment="Center" Margin="12,0,8,0"/><TextBox x:Name="Episode" Width="64" MaxLength="4" AutomationProperties.Name="Episode number"/>
+  </StackPanel>
+  <TextBlock x:Name="Message" Grid.Row="4" Style="{StaticResource Muted}" Margin="0,10,0,0" FontSize="12" MaxHeight="50"/>
+  <Button x:Name="Apply" Grid.Row="5" Content="Use this match" Style="{StaticResource PrimaryButton}" Margin="0,12,0,0" IsEnabled="False"/>
+ </Grid>
+</UserControl>

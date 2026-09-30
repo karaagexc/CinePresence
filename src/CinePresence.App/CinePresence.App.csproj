@@ -9,11 +9,13 @@
     <AssemblyName>CinePresence</AssemblyName>
     <RootNamespace>CinePresence.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets/CinePresence.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../CinePresence.Core/CinePresence.Core.csproj" />
     <PackageReference Include="DiscordRichPresence" Version="1.6.1.70" />
     <Content Include="release.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Assets/tmdb-logo.svg" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Resource Include="Assets/CinePresence.ico" />
   </ItemGroup>
 </Project>

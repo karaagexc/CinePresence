@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "0.2.0"
+  #define AppVersion "0.2.1"
 #endif
 #ifndef SourceDir
   #define SourceDir "..\artifacts\CinePresence-" + AppVersion + "-win-x64"
@@ -23,6 +23,7 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 UninstallDisplayIcon={app}\CinePresence.exe
+SetupIconFile=..\src\CinePresence.App\Assets\CinePresence.ico
 CloseApplications=yes
 RestartApplications=no
 
@@ -44,6 +45,12 @@ Filename: "{app}\CinePresence.exe"; Description: "Open CinePresence"; Flags: now
 
 [UninstallDelete]
 Type: files; Name: "{app}\browser-host.json"
+
+[InstallDelete]
+Type: files; Name: "{app}\browser-companion\metadata.js"
+Type: files; Name: "{app}\browser-companion\content.js"
+Type: files; Name: "{app}\browser-companion\worker.js"
+Type: files; Name: "{app}\browser-companion\popup.js"
 
 [Code]
 procedure CurStepChanged(CurStep: TSetupStep);

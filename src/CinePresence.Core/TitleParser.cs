@@ -23,8 +23,11 @@ public static partial class TitleParser
     {
         if (snapshot.IsMusic || IsKnownMusicSource(snapshot.SourceId) || snapshot.IgnoredReason is not null || snapshot.RequiresConfirmation ||
             MediaClassification.BrowserEligibility(snapshot.SourceId, snapshot.Title, snapshot.Subtitle, snapshot.AlbumTitle).IgnoredReason is not null) return null;
-        return Parse(snapshot.Title, snapshot.Subtitle, snapshot.AlbumTitle);
+        return ParseInput(snapshot);
     }
+
+    public static ParsedTitle? ParseInput(PlaybackSnapshot snapshot) => Parse(snapshot.Title, snapshot.Subtitle, snapshot.AlbumTitle) is { } parsed
+        ? parsed with { TypeHint = snapshot.TypeHint, TmdbIdHint = snapshot.TmdbIdHint } : null;
 
     public static ParsedTitle? Parse(string raw, string subtitle = "", string album = "")
     {

@@ -13,6 +13,10 @@ if (-not (Test-Path -LiteralPath $sdkPath)) {
 }
 Push-Location $projectRoot
 try {
+    & npm.cmd ci --prefix 'browser-companion' --ignore-scripts --no-audit --no-fund
+    if ($LASTEXITCODE -ne 0) { throw 'Companion dependency restore failed. Node.js is required for development.' }
+    & npm.cmd run build --prefix 'browser-companion'
+    if ($LASTEXITCODE -ne 0) { throw 'TypeScript compilation failed.' }
     & $sdkPath restore 'CinePresence.sln'
     if ($LASTEXITCODE -ne 0) { throw 'Dependency restore failed.' }
     & $sdkPath build 'CinePresence.sln' -c $Configuration --no-restore

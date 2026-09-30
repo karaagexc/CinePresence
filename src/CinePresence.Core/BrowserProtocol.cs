@@ -30,7 +30,7 @@ public static class BrowserProtocol
     }
 }
 
-public sealed record BrowserTitle(string Title = "", string Subtitle = "", string Kind = "");
+public sealed record BrowserTitle(string Title = "", string Subtitle = "", string Kind = "", string Evidence = "", int? TmdbId = null);
 public sealed record BrowserItem(string Id = "", string PageKey = "", string Host = "", string FrameHost = "",
     BrowserTitle[]? Titles = null, string State = "paused", double? Position = null, double? Duration = null,
     double Rate = 1, bool Live = false, bool Manual = false, double SeekStart = 0);
@@ -52,12 +52,17 @@ public static class BrowserMediaPolicy
             .Select(x => (Raw: x, Parsed: TitleParser.Parse(x.Title, x.Subtitle)))
             .Where(x => x.Parsed is not null).ToList();
         var selected = choices.OrderByDescending(x => x.Parsed!.HasEpisode ? 4 : x.Raw.Kind is "Movie" or "TVSeries" or "TVEpisode" ? 3 :
-            x.Parsed.Year is not null || StreamingTitle.Read(x.Raw.Title).HasPlaybackContext ? 2 : 1).FirstOrDefault();
+            x.Parsed.Year is not null || StreamingTitle.Read(x.Raw.Title).HasPlaybackContext ? 2 : 1)
+            .ThenByDescending(x => x.Raw.Evidence switch { "structured" => 5, "heading" => 4, "media" => 3, "og" => 2, _ => 1 }).FirstOrDefault();
         var title = selected.Raw?.Title ?? "";
         var subtitle = selected.Raw?.Subtitle ?? "";
         var parsed = selected.Parsed;
+        MediaType? type = parsed?.HasEpisode == true || selected.Raw?.Kind is "TVSeries" or "TVEpisode" ? MediaType.Tv : selected.Raw?.Kind == "Movie" ? MediaType.Movie : null;
+        var tmdbId = selected.Raw?.TmdbId is > 0 and < int.MaxValue ? selected.Raw.TmdbId : null;
+        var agreement = parsed is null ? 0 : choices.Where(x => TitleParser.Normalize(x.Parsed!.Title) == TitleParser.Normalize(parsed.Title))
+            .Select(x => x.Raw.Evidence).Where(x => x is "heading" or "media" or "og" or "structured").Distinct().Count();
         var evidence = parsed is not null && (item.Manual || parsed.HasEpisode || parsed.Year is not null ||
-            selected.Raw!.Kind is "Movie" or "TVSeries" or "TVEpisode" || StreamingTitle.Read(title).HasPlaybackContext);
+            type is not null || agreement >= 2 || StreamingTitle.Read(title).HasPlaybackContext);
         var state = item.State switch { "playing" => PlaybackStatus.Playing, "paused" => PlaybackStatus.Paused, _ => PlaybackStatus.Stopped };
         var samePage = previous?.ItemId == item.PageKey;
         var activeSince = samePage && previous!.Status == state ? previous.LastActiveAt : now;
@@ -66,6 +71,6 @@ public static class BrowserMediaPolicy
             title, subtitle, "", "", false, state, Time(item.Position), item.Live ? null : Time(item.Duration),
             double.IsFinite(item.Rate) && item.Rate is > 0 and <= 16 ? item.Rate : 1, now, activeSince,
             ItemId: item.PageKey, IsLive: item.Live, IgnoredReason: blocked ? "Social/video platform excluded · not shared" : null,
-            RequiresConfirmation: parsed is not null && !evidence);
+            RequiresConfirmation: parsed is not null && !evidence, TypeHint: type, TmdbIdHint: tmdbId);
     }
 }

@@ -13,6 +13,8 @@ The extension ID is `ndikeejjjaangmgeohkglafbldikbnag`. The public manifest key 
 ## Missing or incorrect metadata
 
 - A site may expose its series name and episode only in JSON-LD or headings. The companion can use these even if the tab is called “Watch” or “Player.” It combines parent-page metadata with a readable HTML video in an iframe.
+- Player-adjacent episode labels, release years, Open Graph types and generic movie/TV routes provide additional evidence. Numeric route IDs are only hints: the app checks their TMDB title and type before using them. A movie/series type narrows search; unresolved same-name ties stay unshared instead of selecting the first result. This works across sites, without hardcoded show IDs.
+- **Change match** fades the watching card into a searchable poster list, with editable season and episode. The app's correction window uses the same picker. Strong evidence is handled automatically; the picker remains a fallback.
 - If nothing usable is exposed, open the companion popup and enter the movie or series name, plus both season and episode if known. **Use for this page** is temporary; navigation or browser restart clears it. Choose **Correct match** in the app for the exact TMDB entry. No episode number or TMDB runtime is guessed.
 - If you see “Start a video,” reload the tab after enabling the extension. A video hidden in a closed shadow root, a protected browser page or a player without an accessible HTML video may be unavailable. Pages with ambiguous titles require confirmation.
 - A live stream with infinite duration is live immediately. Finite growing/rolling buffers are classified after several observations, so no fabricated programme end time is published.
@@ -28,3 +30,7 @@ While connected, the companion is authoritative for its browser, including empty
 ## Updating and removing
 
 Install a newer CinePresence release into the same folder, then reload the unpacked extension in the browser. Portable users moving folders must run **Set up companion** again and load the new extension folder. Remove the extension through the browser's extensions page. The app uninstaller removes its own native host registrations and preserves saved settings/cache.
+
+## Development
+
+Companion sources are strict TypeScript in `browser-companion/src`. `npm ci --prefix browser-companion` and `npm run build --prefix browser-companion` compile runtime files into `dist`; the main build script does both. The browser loads the generated JavaScript because browsers do not execute TypeScript directly. Only runtime files and icons are packaged, not development dependencies.

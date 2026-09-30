@@ -15,10 +15,11 @@ public partial class WatchPopup : Window
     private readonly CancellationTokenSource artworkLifetime = new();
     private readonly HttpClient images = new(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(5) };
     private readonly Forms.Screen targetScreen;
-    private bool dismissing, closed;
+    private bool dismissing, closed, editing;
+    private MatchPicker? picker;
     public WatchNotice Notice { get; }
 
-    public WatchPopup(WatchNotice notice, Action<ParsedTitle> changeMatch)
+    public WatchPopup(WatchNotice notice, Action<ParsedTitle> changeMatch, Func<ParsedTitle, MatchPicker>? createPicker = null)
     {
         Notice = notice;
         targetScreen = Forms.Screen.FromHandle(GetForegroundWindow());
@@ -26,7 +27,29 @@ public partial class WatchPopup : Window
         WatchingTitle.Text = notice.Media.Title;
         WatchingDetails.Text = notice.Description;
         DismissButton.Click += (_, _) => Dismiss();
-        ChangeMatchButton.Click += (_, _) => Dismiss(() => changeMatch(notice.Input));
+        ChangeMatchButton.Click += (_, _) =>
+        {
+            if (createPicker is null) { Dismiss(() => changeMatch(notice.Input)); return; }
+            if (editing || closed || dismissing) return;
+            editing = true; dismissTimer.Stop();
+            picker = createPicker(notice.Input);
+            picker.Applied += (_, _) => Dismiss();
+            void Reveal()
+            {
+                if (closed || dismissing) return;
+                NoticeContent.Visibility = Visibility.Collapsed;
+                Width = 420;
+                PickerHost.Content = picker; PickerHost.Visibility = Visibility.Visible;
+                picker.MaxHeight = targetScreen.WorkingArea.Height / VisualTreeHelper.GetDpi(this).DpiScaleY - 100;
+                var handle = new WindowInteropHelper(this).Handle;
+                SetWindowLongPtr(handle, -20, new IntPtr(GetWindowLongPtr(handle, -20).ToInt64() & ~0x08000000));
+                Activate();
+                if (SystemParameters.ClientAreaAnimation) Animate(PickerHost, OpacityProperty, 0, 1, 180);
+            }
+            if (!SystemParameters.ClientAreaAnimation) { Reveal(); return; }
+            var fade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(120));
+            fade.Completed += (_, _) => Reveal(); NoticeContent.BeginAnimation(OpacityProperty, fade);
+        };
         dismissTimer.Tick += (_, _) => Dismiss();
         MouseEnter += (_, _) => dismissTimer.Stop();
         MouseLeave += (_, _) => RestartTimer();
@@ -40,14 +63,15 @@ public partial class WatchPopup : Window
         Loaded += (_, _) => { PlaceOnRight(); AnimateIn(); RestartTimer(); if (ShowArtwork.Source is null) _ = LoadArtworkAsync(); };
         SizeChanged += (_, _) => { if (IsLoaded) PlaceOnRight(); };
         DpiChanged += (_, _) => Dispatcher.BeginInvoke(() => { if (!closed) PlaceOnRight(); });
-        Closed += (_, _) => { closed = true; dismissTimer.Stop(); artworkLifetime.Cancel(); artworkLifetime.Dispose(); images.Dispose(); };
+        Closed += (_, _) => { closed = true; dismissTimer.Stop(); picker?.Dispose(); artworkLifetime.Cancel(); artworkLifetime.Dispose(); images.Dispose(); };
+        PreviewKeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Escape) Dismiss(); };
     }
 
     internal void RefreshDetails(WatchNotice current) => WatchingDetails.Text = current.Description;
 
     private void RestartTimer()
     {
-        if (!dismissing && !closed && !IsMouseOver && !IsKeyboardFocusWithin) dismissTimer.Start();
+        if (!editing && !dismissing && !closed && !IsMouseOver && !IsKeyboardFocusWithin) dismissTimer.Start();
     }
 
     private void AnimateIn()

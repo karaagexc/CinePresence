@@ -14,7 +14,11 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Publish failed.' }
     & $sdkPath publish 'src\CinePresence.BrowserHost\CinePresence.BrowserHost.csproj' -c Release -r win-x64 --self-contained true -p:DebugType=None -o $outputPath
     if ($LASTEXITCODE -ne 0) { throw 'Browser host publish failed.' }
-    Copy-Item -LiteralPath (Join-Path $projectRoot 'browser-companion') -Destination $outputPath -Recurse -Force
+    $extensionPath = Join-Path $outputPath 'browser-companion'
+    New-Item -ItemType Directory -Force $extensionPath | Out-Null
+    foreach ($file in @('manifest.json', 'popup.html', 'popup.css', 'icons', 'dist')) {
+        Copy-Item -LiteralPath (Join-Path $projectRoot ('browser-companion\' + $file)) -Destination $extensionPath -Recurse -Force
+    }
     Copy-Item -LiteralPath (Join-Path $projectRoot 'browser-setup.html') -Destination $outputPath
     @{ discordApplicationId = $DiscordApplicationId } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $outputPath 'release.json') -Encoding utf8
     Copy-Item -LiteralPath (Join-Path $projectRoot 'README.md') -Destination $outputPath

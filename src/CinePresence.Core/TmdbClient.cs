@@ -47,6 +47,12 @@ public sealed class TmdbClient(HttpClient http, Func<string> getToken, TimeProvi
             main.Type == MediaType.Tv ? season : null, main.Type == MediaType.Tv ? episode : null, episodeTitle);
     }
 
+    public async Task<MediaCandidate> FindByIdAsync(int id, MediaType type, CancellationToken ct)
+    {
+        using var json = await GetAsync($"{(type == MediaType.Tv ? "tv" : "movie")}/{id}?language=en-US", ct);
+        return Candidate(json.RootElement, type);
+    }
+
     private async Task<JsonDocument> GetAsync(string relative, CancellationToken ct, string? token = null)
     {
         var currentToken = (token ?? getToken()).Trim();
@@ -69,7 +75,7 @@ public sealed class TmdbClient(HttpClient http, Func<string> getToken, TimeProvi
                 Interlocked.Exchange(ref retryAfterTicks, clock.GetUtcNow().Add(delay).Ticks);
                 throw new ServiceException("TMDB is rate limiting requests. CinePresence will retry shortly.");
             }
-            if (response.StatusCode == HttpStatusCode.NotFound) throw new ServiceException("This title or episode is not available on TMDB.");
+            if (response.StatusCode == HttpStatusCode.NotFound) throw new ServiceException("This title or episode is not available on TMDB.", response.StatusCode);
             if (!response.IsSuccessStatusCode) throw new ServiceException("TMDB is temporarily unavailable. Cached matches still work.");
             await using var stream = await response.Content.ReadAsStreamAsync(ct);
             return await JsonDocument.ParseAsync(stream, cancellationToken: ct);
@@ -103,8 +109,24 @@ public sealed class MediaResolver(TmdbClient client, MediaCache cache, TimeProvi
         if (cached is not null) return cached;
         try
         {
-            var candidates = await client.SearchAsync(title.Title, title.HasEpisode ? MediaType.Tv : null, cancellationToken);
-            var best = Rank(title, candidates).FirstOrDefault();
+            MediaCandidate? best = null;
+            var type = title.HasEpisode ? MediaType.Tv : title.TypeHint;
+            if (type.HasValue && title.TmdbIdHint is > 0)
+            {
+                try
+                {
+                    var direct = await client.FindByIdAsync(title.TmdbIdHint.Value, type.Value, cancellationToken);
+                    // Numeric route IDs may be local site IDs. Verify title/type
+                    // before trusting one as a TMDB identity.
+                    if (MatchesIdentity(title, direct)) best = direct;
+                }
+                catch (ServiceException ex) when (ex.StatusCode == HttpStatusCode.NotFound) { }
+            }
+            if (best is null)
+            {
+                var candidates = await client.SearchAsync(title.Title, type, cancellationToken);
+                best = BestAutomatic(title, candidates);
+            }
             if (best is null) return null;
             var result = await client.DetailsAsync(best, title.Season, title.Episode, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
@@ -124,12 +146,32 @@ public sealed class MediaResolver(TmdbClient client, MediaCache cache, TimeProvi
     }
 
     public static IEnumerable<MediaCandidate> Rank(ParsedTitle input, IEnumerable<MediaCandidate> candidates) =>
-        candidates.Where(x => !input.HasEpisode || x.Type == MediaType.Tv)
+        candidates.Where(x => input.HasEpisode ? x.Type == MediaType.Tv : input.TypeHint is null || x.Type == input.TypeHint)
+            .Where(x => input.Year is null || x.Year is null || Math.Abs(input.Year.Value - x.Year.Value) <= 1)
             .Select(x => (Candidate: x, Similarity: Math.Max(Similarity(input.Title, x.Title), Similarity(input.Title, x.OriginalTitle))))
             .Where(x => x.Similarity >= (input.HasEpisode || input.Year.HasValue ? 0.75 : 0.9))
-            .OrderByDescending(x => x.Similarity + (input.Year.HasValue && x.Candidate.Year.HasValue
-                ? input.Year == x.Candidate.Year ? 0.4 : -Math.Min(0.4, Math.Abs(input.Year.Value - x.Candidate.Year.Value) * 0.04) : 0))
+            .OrderByDescending(x => Score(input, x.Candidate))
             .ThenBy(x => x.Candidate.Type).ThenBy(x => x.Candidate.Id).Select(x => x.Candidate);
+
+    public static MediaCandidate? BestAutomatic(ParsedTitle input, IEnumerable<MediaCandidate> candidates)
+    {
+        var ranked = Rank(input, candidates).DistinctBy(x => (x.Type, x.Id)).Take(2).ToArray();
+        if (ranked.Length == 0) return null;
+        // Same-named movies, remakes and series need distinguishing evidence.
+        if (ranked.Length > 1 && Score(input, ranked[0]) - Score(input, ranked[1]) < 0.12) return null;
+        return ranked[0];
+    }
+    private static double Score(ParsedTitle input, MediaCandidate candidate) => Math.Max(Similarity(input.Title, candidate.Title), Similarity(input.Title, candidate.OriginalTitle)) +
+        (input.Year.HasValue && candidate.Year.HasValue ? input.Year == candidate.Year ? 0.4 : -Math.Min(0.4, Math.Abs(input.Year.Value - candidate.Year.Value) * 0.04) : 0);
+
+    public static bool MatchesIdentity(ParsedTitle input, MediaCandidate candidate)
+    {
+        if ((input.HasEpisode ? MediaType.Tv : input.TypeHint) is { } type && candidate.Type != type) return false;
+        if (input.Year.HasValue && candidate.Year.HasValue && input.Year != candidate.Year) return false;
+        var title = TitleParser.Normalize(input.Title);
+        return new[] { candidate.Title, candidate.OriginalTitle }.Any(name => Similarity(title, name) >= 0.75 ||
+            title.Length >= 3 && TitleParser.Normalize(name).EndsWith(" " + title, StringComparison.Ordinal));
+    }
 
     private static double Similarity(string a, string b)
     {

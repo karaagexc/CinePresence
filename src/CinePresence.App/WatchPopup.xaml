@@ -16,7 +16,9 @@
         </StackPanel>
         <Button x:Name="DismissButton" Grid.Column="1" Content="×" Padding="6,0" FontSize="16" Background="Transparent" BorderThickness="0" AutomationProperties.Name="Dismiss watching popup"/>
       </Grid>
-      <Grid>
+      <Grid x:Name="NoticeBody">
+       <StackPanel x:Name="NoticeContent">
+       <Grid>
         <Grid.ColumnDefinitions><ColumnDefinition Width="60"/><ColumnDefinition Width="14"/><ColumnDefinition/></Grid.ColumnDefinitions>
         <Border Height="90" Width="60" CornerRadius="7" Background="#2B263E" VerticalAlignment="Top">
           <Grid><TextBlock Text="▶" Foreground="{StaticResource AccentBrush}" FontSize="22" HorizontalAlignment="Center" VerticalAlignment="Center"/>
@@ -35,6 +37,9 @@
         <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
         <TextBlock Text="Not what's playing?" Style="{StaticResource Muted}" FontSize="11.5" VerticalAlignment="Center" Margin="0,0,10,0"/>
         <Button x:Name="ChangeMatchButton" Grid.Column="1" Content="Change match" Style="{StaticResource PrimaryButton}" FontSize="12" Padding="12,7" AutomationProperties.Name="Change the detected movie or show"/>
+      </Grid>
+       </StackPanel>
+       <ContentControl x:Name="PickerHost" Visibility="Collapsed"/>
       </Grid>
     </StackPanel>
   </Border>

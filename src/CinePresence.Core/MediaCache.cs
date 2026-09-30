@@ -9,6 +9,7 @@ public sealed class MediaCache
     private sealed record Entry(ResolvedMedia Media, DateTimeOffset Expires);
     private sealed class Document
     {
+        public int AutomaticMatchVersion { get; set; }
         public Dictionary<string, Entry> Matches { get; set; } = [];
         public Dictionary<string, ResolvedMedia> Overrides { get; set; } = [];
     }
@@ -20,7 +21,12 @@ public sealed class MediaCache
     {
         this.path = path;
         if (path is null || !File.Exists(path)) return;
-        try { data = JsonSerializer.Deserialize<Document>(File.ReadAllText(path)) ?? new(); }
+        try
+        {
+            data = JsonSerializer.Deserialize<Document>(File.ReadAllText(path)) ?? new();
+            // Re-evaluate matches made by the older title-only matcher; keep user corrections.
+            if (data.AutomaticMatchVersion != 2) data.Matches.Clear();
+        }
         catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException) { }
     }
 
@@ -58,6 +64,7 @@ public sealed class MediaCache
     private void Save()
     {
         if (path is null) return;
+        data.AutomaticMatchVersion = 2;
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);

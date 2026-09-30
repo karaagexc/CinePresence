@@ -7,3 +7,5 @@ artifacts/
 *.suo
 TestResults/
 release.local.json
+browser-companion/node_modules/
+browser-companion/dist/

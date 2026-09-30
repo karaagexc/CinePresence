@@ -33,7 +33,12 @@ internal sealed class WatchNotificationService : IDisposable
             var notice = gate.Next(view, enabled);
             if (notice is null) return;
             popup?.Close();
-            var next = new WatchPopup(notice, changeMatch);
+            var next = new WatchPopup(notice, changeMatch, input =>
+            {
+                var picker = new MatchPicker(controller, input);
+                picker.Applied += (_, _) => controller.RefreshMatch();
+                return picker;
+            });
             popup = next;
             next.Closed += (_, _) => { if (popup == next) popup = null; };
             next.Show();

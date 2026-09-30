@@ -18,8 +18,8 @@ function harness() {
         async query() { return [{ id: 1, url: 'https://cinema.example/watch/17' }]; } }
     }
   });
-  vm.runInContext(fs.readFileSync(path.join(root, 'metadata.js'), 'utf8'), context);
-  vm.runInContext(fs.readFileSync(path.join(root, 'worker.js'), 'utf8').replace('import "./metadata.js";', ''), context);
+  vm.runInContext(fs.readFileSync(path.join(root, 'dist/metadata.js'), 'utf8'), context);
+  vm.runInContext(fs.readFileSync(path.join(root, 'dist/worker.js'), 'utf8').replace('import "./metadata.js";', ''), context);
   const settle = () => new Promise(resolve => setTimeout(resolve, 25));
   async function sample({ host = 'cinema.example', frameHost = host, frame = 0, titles = [{ title: 'Regular Show', subtitle: 'S6E13', kind: 'TVEpisode' }], player = { state: 'playing', position: 70, duration: 673, rate: 1 }, incognito = false } = {}) {
     listeners.message({ type: 'sample', titles, player }, { id: 'test', tab: { id: 1, url: `https://${host}/watch/17`, incognito }, frameId: frame, url: `https://${frameHost}/embed` }); await settle();
@@ -81,4 +81,40 @@ test('late samples cannot restore a closed tab', async () => {
 });
 test('an excluded page invalidates in-flight samples from the previous page', async () => {
   const h = harness(); const pending = h.sample(); await h.sample({ host: 'facebook.com' }); await pending; assert.deepEqual(h.items(), []);
+});
+
+
+function documentFixture(title, heading, nearby = '', meta = {}) {
+  const h1 = heading ? { textContent: heading, parentElement: { textContent: nearby || heading, parentElement: null } } : null;
+  return { title, querySelector: selector => selector === 'h1' ? h1 : Object.entries(meta).map(([key, content]) => selector.includes(`"${key}"`) ? { content } : null).find(Boolean) ?? null,
+    querySelectorAll: selector => selector.startsWith('script') ? [] : h1 ? [h1] : [] };
+}
+test('series route plus local player heading yields type, ID and episode without a site rule', () => {
+  const m = harness().context.CinePresenceMetadata;
+  for (const [name, id, season, episode] of [['Lanterns', 95350, 1, 7], ['Raw', 4656, 34, 14]]) {
+    const titles = m.collect(documentFixture(name + ' | Cinema', name, `${name} S${season} E${episode} Episode title`), {}, `https://cinema.example/tv/${id}/${season}/${episode}?play=true`);
+    assert.equal(titles[0].title, name); assert.equal(titles[0].kind, 'TVSeries'); assert.equal(titles[0].tmdbId, id);
+    assert.equal(titles[0].subtitle, `S${season} E${episode}`);
+  }
+});
+test('movie page route and nearby year allow automatic identification of remakes', () => {
+  const titles = harness().context.CinePresenceMetadata.collect(documentFixture('Watch The Odyssey', 'The Odyssey', 'The Odyssey 2026 8.0'), {}, 'https://cinema.example/watch/movie/1368337');
+  assert.equal(titles[0].title, 'The Odyssey (2026)'); assert.equal(titles[0].tmdbId, 1368337); assert.equal(titles[0].kind, 'Movie'); assert.equal(titles[0].subtitle, '');
+});
+test('on-screen episode overrides outdated route episode and broad recommendation text is ignored', () => {
+  const m = harness().context.CinePresenceMetadata;
+  let titles = m.collect(documentFixture('Dark', 'Dark', 'Dark S2 E5'), {}, 'https://cinema.example/tv/70523/2/4');
+  assert.equal(titles[0].subtitle, 'S2 E5');
+  titles = m.collect(documentFixture('Dark', 'Dark', 'Dark Recommended Another Series S8E9'), {}, 'https://cinema.example/watch');
+  assert.equal(titles[0].subtitle, '');
+});
+test('corroborating heading, media metadata and route hints survive iframe forwarding', async () => {
+  const h = harness();
+  const titles = h.context.CinePresenceMetadata.collect(documentFixture('Raw | Cinema', 'Raw', 'Raw S34 E14'), {}, 'https://cinema.example/tv/4656/34/14');
+  await h.sample({ titles, player: null }); await h.sample({ frame: 2, frameHost: 'embed.example', titles: [] });
+  assert.equal(h.items()[0].titles[0].tmdbId, 4656); assert.equal(h.items()[0].titles[0].evidence, 'heading');
+});
+test('movie year is not borrowed from a recommendations region', () => {
+  const titles = harness().context.CinePresenceMetadata.collect(documentFixture('Dune', 'Dune', 'Dune Related movies Arrival 2016'), {}, 'https://cinema.example/movie/438631');
+  assert.equal(titles[0].title, 'Dune');
 });

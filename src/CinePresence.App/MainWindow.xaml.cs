@@ -178,7 +178,7 @@ public partial class MainWindow : Window
         var view = controller.Engine.View;
         var source = view.Source ?? view.Sources.FirstOrDefault(x => !x.IsMusic && x.IgnoredReason is null && TitleParser.Parse(x.Title, x.Subtitle, x.AlbumTitle) is not null);
         if (source is null) return;
-        var parsed = TitleParser.Parse(source.Title, source.Subtitle, source.AlbumTitle);
+        var parsed = TitleParser.ParseInput(source);
         if (parsed is null) { MessageBox.Show("The player needs to provide a usable title before a correction can be remembered.", "CinePresence"); return; }
         OpenCorrection(parsed);
     }
@@ -242,6 +242,19 @@ public partial class MainWindow : Window
         popup.ChangeMatchButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         await Task.Delay(250);
         if (!popupClicked) throw new InvalidOperationException("Popup did not pass its captured title to correction.");
+        MatchPicker? testPicker = null;
+        var pickerPopup = new WatchPopup(notice, _ => throw new InvalidOperationException("Picker opened legacy dialog."), input =>
+        {
+            if (input != notice.Input) throw new InvalidOperationException("Correction target changed.");
+            testPicker = new MatchPicker(controller, input);
+            testPicker.ShowFixture(popup.ShowArtwork.Source);
+            return testPicker;
+        });
+        pickerPopup.Show(); await Task.Delay(300);
+        pickerPopup.ChangeMatchButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        await Task.Delay(450);
+        if (testPicker?.IsVisible != true || pickerPopup.NoticeContent.IsVisible) throw new InvalidOperationException("Poster picker transition failed.");
+        pickerPopup.Capture(Path.Combine(directory, "match-picker.png")); pickerPopup.Close();
         var timedPopup = new WatchPopup(notice, _ => { });
         var timer = Stopwatch.StartNew();
         timedPopup.Show();
