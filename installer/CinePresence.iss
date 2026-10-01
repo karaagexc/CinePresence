@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "0.2.1"
+  #define AppVersion "0.2.2"
 #endif
 #ifndef SourceDir
   #define SourceDir "..\artifacts\CinePresence-" + AppVersion + "-win-x64"
@@ -53,6 +53,52 @@ Type: files; Name: "{app}\browser-companion\worker.js"
 Type: files; Name: "{app}\browser-companion\popup.js"
 
 [Code]
+var
+  SavedChromeHost, SavedEdgeHost: String;
+
+function HostKey(Browser: String): String;
+begin
+  Result := 'Software\' + Browser + '\NativeMessagingHosts\org.cinepresence.companion';
+end;
+
+function SuspendOwnedHost(Browser: String; var Saved: String): Boolean;
+var Key, Value: String;
+begin
+  Result := True;
+  if Saved <> '' then exit;
+  Key := HostKey(Browser);
+  if RegQueryStringValue(HKCU, Key, '', Value) and
+    (CompareText(Value, ExpandConstant('{app}\browser-host.json')) = 0) then begin
+    Saved := Value;
+    Result := RegDeleteValue(HKCU, Key, '');
+    if not Result then Saved := '';
+    if Result then Log('Suspended own browser connection during file replacement: ' + Browser);
+  end;
+end;
+
+procedure RestoreOwnedHost(Browser, Saved: String);
+begin
+  if (Saved <> '') and FileExists(Saved) and not RegValueExists(HKCU, HostKey(Browser), '') then
+    RegWriteStringValue(HKCU, HostKey(Browser), '', Saved);
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  Result := '';
+  // Prevent the extension from respawning a helper that Restart Manager just
+  // closed. Only suspend this installation's registrations, never another copy.
+  if not SuspendOwnedHost('Google\Chrome', SavedChromeHost) or
+     not SuspendOwnedHost('Microsoft\Edge', SavedEdgeHost) then
+    Result := 'Close CinePresence Companion connections and retry the update.';
+end;
+
+procedure DeinitializeSetup;
+begin
+  // Also restore after cancellation/rollback; browser settings are not changed.
+  RestoreOwnedHost('Google\Chrome', SavedChromeHost);
+  RestoreOwnedHost('Microsoft\Edge', SavedEdgeHost);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var ResultCode: Integer;
 begin

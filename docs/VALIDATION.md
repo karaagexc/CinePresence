@@ -54,3 +54,9 @@ These checks must not be marked complete solely because simulated tests pass. Se
 - Actual WPF smoke rendering exercised the popup-to-poster-picker fade, preserved its correction target and rendered the poster list with episode fields. Normal popup dismissal measured 7.55 seconds. Editing keeps the picker open; closing it cancels pending searches/artwork.
 - Older automatic cache entries are re-evaluated under the new matcher. Explicit saved corrections remain stored. Numeric URL IDs must agree with TMDB identity; titles that remain ambiguous are not guessed.
 - User screenshots confirm the installed 0.2.0 companion connected in Edge and supplied video timelines, while exposing the incorrect matches addressed here. Live playback after reloading the 0.2.1 extension, final Discord rendering, multi-monitor placement and clean-account installation remain manual acceptance checks.
+
+## 0.2.2 installer handoff
+
+The 0.2.1 upgrade check exposed an installer race: the browser respawned its native helper after Restart Manager closed it, locking the executable. Publication was stopped. The installer now suspends only its own native-host registrations before checking open files and restores them after completion or cancellation, preventing this reconnect race without closing the browser. Source tag 0.2.1 is retained; the corrected release is 0.2.2.
+
+The installer handoff integration check passed on the existing Windows account with a native helper held open and a simulated browser reconnect loop. Restart Manager detected and closed the helper; both owned registrations were restored, the settings hash was unchanged, and setup exited 0 without a reboot. This is an upgrade test, not a clean-machine test.
