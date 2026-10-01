@@ -60,3 +60,9 @@ These checks must not be marked complete solely because simulated tests pass. Se
 The 0.2.1 upgrade check exposed an installer race: the browser respawned its native helper after Restart Manager closed it, locking the executable. Publication was stopped. The installer now suspends only its own native-host registrations before checking open files and restores them after completion or cancellation, preventing this reconnect race without closing the browser. Source tag 0.2.1 is retained; the corrected release is 0.2.2.
 
 The installer handoff integration check passed on the existing Windows account with a native helper held open and a simulated browser reconnect loop. Restart Manager detected and closed the helper; both owned registrations were restored, the settings hash was unchanged, and setup exited 0 without a reboot. This is an upgrade test, not a clean-machine test.
+
+## 0.2.3 Spotify exclusion
+
+Spotify web domains and embeds are filtered in both the TypeScript worker path and desktop protocol policy. Native browser labels/domain metadata are excluded, while the desktop Spotify source filter remains active. 166 .NET and 18 compiled-companion tests passed, including manual-title resistance, real episode-like metadata on excluded hosts, desktop identities, and unrelated hostname suffixes. No live Spotify-to-Discord test is claimed.
+
+The setup-page helper and Node test tools are now TypeScript. Both runtime sources and development tools pass strict type checking; the companion suite runs from `.mts` files on Node 24 against compiled runtime output. README screenshots and relative guide links were checked. Browser runtime output remains generated JavaScript.

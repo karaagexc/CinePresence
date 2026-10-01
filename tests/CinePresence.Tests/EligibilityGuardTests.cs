@@ -4,6 +4,8 @@ public sealed class EligibilityGuardTests
 {
     [Theory]
     [InlineData("Facebook")]
+    [InlineData("Spotify")]
+    [InlineData("Spotify Web Player")]
     [InlineData("(3) Facebook")]
     [InlineData("YouTube")]
     [InlineData("Instagram")]
@@ -34,6 +36,8 @@ public sealed class EligibilityGuardTests
     [InlineData("video Dailymotion")]
     [InlineData("Reddit")]
     [InlineData("Twitch")]
+    [InlineData("Spotify")]
+    [InlineData("Spotify Web Player")]
     public void ExcludedPlatformCannotPublishEvenWithRealEpisodeMarkers(string platform)
     {
         var title = "Regular Show S06E13";
@@ -80,6 +84,7 @@ public sealed class EligibilityGuardTests
     [InlineData("YouTube - InPrivate - Microsoft Edge")]
     [InlineData("Facebook - Microsoft Edge")]
     [InlineData("A clip - YouTube - Microsoft Edge")]
+    [InlineData("Spotify - Web Player - Microsoft Edge")]
     public void GenericPlayerMetadataCanUseTheOnlyShowCaptionDespiteUnrelatedWindows(string unrelated)
     {
         var result = WindowTitlePolicy.ResolveMetadata("msedge.exe", "video", "", "", "",
@@ -91,6 +96,7 @@ public sealed class EligibilityGuardTests
     [Theory]
     [InlineData("Facebook")]
     [InlineData("Regular Show S06E13 - YouTube")]
+    [InlineData("Regular Show S06E13 - Spotify")]
     public void ExplicitlyExcludedMetadataNeverFallsBackToAnotherShowWindow(string title)
     {
         var result = WindowTitlePolicy.ResolveMetadata("msedge.exe", title, "", "", "", ["Other Show S01E01 - Microsoft Edge"], true);
@@ -107,6 +113,22 @@ public sealed class EligibilityGuardTests
     {
         Assert.Null(MediaClassification.BrowserEligibility("vlc", "Facebook (2011).mkv").IgnoredReason);
         Assert.NotNull(TitleParser.Parse(Fixture.Source() with { SourceId = "vlc", Title = "Facebook (2011).mkv" }));
+    }
+
+    [Theory]
+    [InlineData("Spotify.exe")]
+    [InlineData("SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify")]
+    public void SpotifyDesktopNeverPublishesEvenWithEpisodeLikeTrackNames(string sourceId)
+    {
+        var source = Fixture.Source() with { SourceId = sourceId, Title = "Regular Show S06E13", IsMusic = false };
+        Assert.Null(TitleParser.Parse(source));
+        Assert.Null(SourceSelector.Select([source], null, new HashSet<string>()));
+    }
+
+    [Fact] public void SpotifyWebDomainInMetadataBlocksAnOtherwiseEligibleTitle()
+    {
+        var result = MediaClassification.BrowserEligibility("msedge.exe", "Regular Show S06E13", artist: "https://open.spotify.com/episode/example");
+        Assert.NotNull(result.IgnoredReason);
     }
 
     [Fact] public void WeakWordOverlapDoesNotAutomaticallyMatchAMovie()

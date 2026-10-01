@@ -21,7 +21,7 @@ The extension ID is `ndikeejjjaangmgeohkglafbldikbnag`. The public manifest key 
 
 ## Restrictions and privacy
 
-Facebook, YouTube (including privacy-enhanced embeds), Twitter/X, Instagram, TikTok, VK, Vimeo, Dailymotion, Reddit, Twitch, Kick, Snapchat, Pinterest and Threads are excluded by exact domain/subdomain checks. Both the outer page and player iframe must be eligible; manual titles cannot bypass these restrictions. Private windows are skipped. Unidentified and non-movie/series metadata stays unshared.
+Spotify, Facebook, YouTube (including privacy-enhanced embeds), Twitter/X, Instagram, TikTok, VK, Vimeo, Dailymotion, Reddit, Twitch, Kick, Snapchat, Pinterest and Threads are excluded by exact domain/subdomain checks. Both the outer page and player iframe must be eligible; manual titles cannot bypass these restrictions. Private windows are skipped. Unidentified and non-movie/series metadata stays unshared.
 
 The companion's page permission lets it inspect relevant headings, JSON-LD, Open Graph metadata and video properties. Candidate titles/episode fields, domains, a page hash and playback state/timing go to the local Windows app. Full URLs, query strings, media download URLs, cookies, form inputs and browsing history are not sent. Only the desktop app contacts TMDB/Discord. Communication uses the browser's native messaging API and a Windows pipe restricted to the current account; no server listens on a network port. Payload sizes and session counts are bounded.
 
@@ -33,4 +33,4 @@ Install a newer CinePresence release into the same folder, then reload the unpac
 
 ## Development
 
-Companion sources are strict TypeScript in `browser-companion/src`. `npm ci --prefix browser-companion` and `npm run build --prefix browser-companion` compile runtime files into `dist`; the main build script does both. The browser loads the generated JavaScript because browsers do not execute TypeScript directly. Only runtime files and icons are packaged, not development dependencies.
+Companion sources and the setup-page helper are strict TypeScript in `browser-companion/src`. `npm ci --prefix browser-companion` and `npm run build --prefix browser-companion` compile runtime files into `dist` and type-check the TypeScript test tools; the main build script does both. The browser loads the generated JavaScript because browsers do not execute TypeScript directly. Only runtime files and icons are packaged, not development dependencies. See [Build and development](DEVELOPMENT.md) for prerequisites and test commands.

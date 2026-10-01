@@ -1,5 +1,5 @@
 (() => {
-  const blocked = ["facebook.com", "fb.com", "fb.watch", "youtube.com", "youtube-nocookie.com", "youtu.be", "twitter.com", "x.com", "instagram.com", "tiktok.com", "vk.com", "vkvideo.ru", "vimeo.com", "dailymotion.com", "dai.ly", "reddit.com", "twitch.tv", "kick.com", "snapchat.com", "pinterest.com", "threads.net", "threads.com"];
+  const blocked = ["facebook.com", "fb.com", "fb.watch", "youtube.com", "youtube-nocookie.com", "youtu.be", "twitter.com", "x.com", "instagram.com", "tiktok.com", "vk.com", "vkvideo.ru", "vimeo.com", "dailymotion.com", "dai.ly", "reddit.com", "twitch.tv", "kick.com", "snapchat.com", "pinterest.com", "threads.net", "threads.com", "spotify.com"];
   const text = (value: unknown): string => typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, 300) : "";
   const host = (url: string): string => { try { return new URL(url).hostname.toLowerCase().replace(/\.$/, ""); } catch { return ""; } };
   const excluded = (value: string): boolean => blocked.some(x => value === x || value.endsWith("." + x));
@@ -39,7 +39,7 @@
     }
     visit(nodes); return titles.slice(0, 5);
   }
-  function collect(doc: Document, nav: Pick<Navigator, "mediaSession">, url = doc.URL ?? ""): CinePresence.Title[] {
+  function collect(doc: Document, nav: Partial<Pick<Navigator, "mediaSession">>, url = doc.URL ?? ""): CinePresence.Title[] {
     const data: unknown[] = [];
     for (const script of [...doc.querySelectorAll('script[type="application/ld+json"]')].slice(0, 12)) {
       const json = script.textContent ?? "";

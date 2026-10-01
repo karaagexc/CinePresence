@@ -12,7 +12,7 @@ declare namespace CinePresence {
     host(url: string): string; excluded(host: string): boolean; page(url: string): string;
     text(value: unknown): string; route(url: string): Route;
     structured(nodes: unknown): Title[];
-    collect(doc: Document, nav: Pick<Navigator, "mediaSession">, url?: string): Title[];
+    collect(doc: Document, nav: Partial<Pick<Navigator, "mediaSession">>, url?: string): Title[];
   }
 }
 declare var CinePresenceMetadata: CinePresence.Metadata;

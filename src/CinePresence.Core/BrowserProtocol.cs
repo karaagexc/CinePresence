@@ -38,7 +38,7 @@ public sealed record BrowserBatch(int Version = 1, string ClientId = "", string 
 
 public static class BrowserMediaPolicy
 {
-    private static readonly string[] BlockedHosts = ["facebook.com", "fb.com", "fb.watch", "youtube.com", "youtube-nocookie.com", "youtu.be", "twitter.com", "x.com", "instagram.com", "tiktok.com", "vk.com", "vkvideo.ru", "vimeo.com", "dailymotion.com", "dai.ly", "reddit.com", "twitch.tv", "kick.com", "snapchat.com", "pinterest.com", "threads.net", "threads.com"];
+    private static readonly string[] BlockedHosts = ["facebook.com", "fb.com", "fb.watch", "youtube.com", "youtube-nocookie.com", "youtu.be", "twitter.com", "x.com", "instagram.com", "tiktok.com", "vk.com", "vkvideo.ru", "vimeo.com", "dailymotion.com", "dai.ly", "reddit.com", "twitch.tv", "kick.com", "snapchat.com", "pinterest.com", "threads.net", "threads.com", "spotify.com"];
     public static bool BlockedHost(string host) => BlockedHosts.Any(x => host.TrimEnd('.').Equals(x, StringComparison.OrdinalIgnoreCase) || host.TrimEnd('.').EndsWith("." + x, StringComparison.OrdinalIgnoreCase));
     public static bool ValidHost(string host) => host.Length is > 0 and <= 253 && Uri.CheckHostName(host) != UriHostNameType.Unknown;
 
@@ -70,7 +70,7 @@ public static class BrowserMediaPolicy
         return new("browser-" + batch.ClientId + "-" + item.Id, batch.Browser, batch.Browser == "msedge" ? "Microsoft Edge" : "Google Chrome", AdapterKind.Browser,
             title, subtitle, "", "", false, state, Time(item.Position), item.Live ? null : Time(item.Duration),
             double.IsFinite(item.Rate) && item.Rate is > 0 and <= 16 ? item.Rate : 1, now, activeSince,
-            ItemId: item.PageKey, IsLive: item.Live, IgnoredReason: blocked ? "Social/video platform excluded · not shared" : null,
+            ItemId: item.PageKey, IsLive: item.Live, IgnoredReason: blocked ? "Excluded platform · not shared" : null,
             RequiresConfirmation: parsed is not null && !evidence, TypeHint: type, TmdbIdHint: tmdbId);
     }
 }

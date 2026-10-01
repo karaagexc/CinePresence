@@ -37,6 +37,7 @@ try {
     }
     New-Item -ItemType Directory -Force (Join-Path $outputPath 'docs') | Out-Null
     Copy-Item -Path (Join-Path $projectRoot 'docs\*.md') -Destination (Join-Path $outputPath 'docs')
+    Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\images') -Destination (Join-Path $outputPath 'docs') -Recurse -Force
     $zipPath = Join-Path $projectRoot ('artifacts\CinePresence-' + $appVersion + '-win-x64.zip')
     Compress-Archive -Path $outputPath -DestinationPath $zipPath -Force
     & (Join-Path $PSScriptRoot 'build-installer.ps1') -Version $appVersion

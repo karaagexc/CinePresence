@@ -20,6 +20,7 @@ public sealed class BrowserCompanionTests
     [Theory]
     [InlineData("www.facebook.com")][InlineData("m.youtube.com")][InlineData("player.vimeo.com")]
     [InlineData("x.com")][InlineData("instagram.com")][InlineData("vk.com")][InlineData("www.dailymotion.com")]
+    [InlineData("open.spotify.com")][InlineData("embed.spotify.com")]
     public void DomainExclusionsOverrideEpisodeEvidenceAndManualTitles(string host)
     {
         var item = BrowserMediaPolicy.Create(Batch(), Item(host) with { Manual = true }, Fixture.Now, null)!;

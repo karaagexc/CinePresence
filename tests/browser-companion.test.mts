@@ -1,33 +1,44 @@
-const { test } = require('node:test');
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const vm = require('node:vm');
-const { webcrypto, createHash } = require('node:crypto');
-const path = require('node:path');
-const root = path.join(__dirname, '..', 'browser-companion');
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+import { webcrypto, createHash } from 'node:crypto';
+import path from 'node:path';
+const root = path.join(import.meta.dirname, '..', 'browser-companion');
+interface Listeners {
+  message(message: unknown, sender: unknown, reply?: (value: unknown) => void): unknown;
+  native(reply: unknown): void;
+  disconnect(): void;
+  removed(id: number): void;
+  updated(id: number, change: { url?: string; status?: string }): void;
+}
+interface Sample {
+  host?: string; frameHost?: string; frame?: number;
+  titles?: Partial<CinePresence.Title>[]; player?: Partial<CinePresence.Player> | null; incognito?: boolean;
+}
 function harness() {
-  const listeners = {}, sent = [];
+  const listeners = {} as Listeners, sent: unknown[] = [];
   const context = vm.createContext({ URL, TextEncoder, crypto: webcrypto, navigator: { userAgent: 'Edg/140' }, setInterval() {}, Date,
     chrome: {
       storage: { session: { async get() { return {}; }, async set() {} } },
-      runtime: { id: 'test', getURL: x => 'chrome-extension://test/' + x,
-        onMessage: { addListener: fn => listeners.message = fn },
-        connectNative: () => ({ postMessage(packet) { sent.push(packet); queueMicrotask(() => listeners.native({ connected: true, message: 'Connected' })); },
-          onMessage: { addListener: fn => listeners.native = fn }, onDisconnect: { addListener: fn => listeners.disconnect = fn }, disconnect() {} }) },
-      tabs: { onRemoved: { addListener: fn => listeners.removed = fn }, onUpdated: { addListener: fn => listeners.updated = fn },
+      runtime: { id: 'test', getURL: (x: string) => 'chrome-extension://test/' + x,
+        onMessage: { addListener: (fn: Listeners['message']) => listeners.message = fn },
+        connectNative: () => ({ postMessage(packet: unknown) { sent.push(packet); queueMicrotask(() => listeners.native({ connected: true, message: 'Connected' })); },
+          onMessage: { addListener: (fn: Listeners['native']) => listeners.native = fn }, onDisconnect: { addListener: (fn: Listeners['disconnect']) => listeners.disconnect = fn }, disconnect() {} }) },
+      tabs: { onRemoved: { addListener: (fn: Listeners['removed']) => listeners.removed = fn }, onUpdated: { addListener: (fn: Listeners['updated']) => listeners.updated = fn },
         async query() { return [{ id: 1, url: 'https://cinema.example/watch/17' }]; } }
     }
-  });
+  }) as vm.Context & { CinePresenceMetadata: CinePresence.Metadata };
   vm.runInContext(fs.readFileSync(path.join(root, 'dist/metadata.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(root, 'dist/worker.js'), 'utf8').replace('import "./metadata.js";', ''), context);
   const settle = () => new Promise(resolve => setTimeout(resolve, 25));
-  async function sample({ host = 'cinema.example', frameHost = host, frame = 0, titles = [{ title: 'Regular Show', subtitle: 'S6E13', kind: 'TVEpisode' }], player = { state: 'playing', position: 70, duration: 673, rate: 1 }, incognito = false } = {}) {
+  async function sample({ host = 'cinema.example', frameHost = host, frame = 0, titles = [{ title: 'Regular Show', subtitle: 'S6E13', kind: 'TVEpisode' }], player = { state: 'playing', position: 70, duration: 673, rate: 1 }, incognito = false }: Sample = {}) {
     listeners.message({ type: 'sample', titles, player }, { id: 'test', tab: { id: 1, url: `https://${host}/watch/17`, incognito }, frameId: frame, url: `https://${frameHost}/embed` }); await settle();
   }
-  return { context, listeners, sent, sample, settle, items: () => JSON.parse(JSON.stringify(vm.runInContext('packetItems()', context))) };
+  return { context, listeners, sent, sample, settle, items: (): CinePresence.Item[] => JSON.parse(JSON.stringify(vm.runInContext('packetItems()', context))) };
 }
 test('stable extension ID matches the native host registration', () => {
-  const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json')));
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
   const id = [...createHash('sha256').update(Buffer.from(manifest.key, 'base64')).digest().subarray(0, 16)].map(n => String.fromCharCode(97 + (n >> 4), 97 + (n & 15))).join('');
   assert.equal(id, 'ndikeejjjaangmgeohkglafbldikbnag');
 });
@@ -38,9 +49,9 @@ test('structured episode extraction uses the series name, not the episode title'
 });
 test('generic tab title is supplemented by headings and explicit episode details', () => {
   const h = harness();
-  const doc = { title: 'Watch', querySelector: selector => selector === 'h1' ? { textContent: 'Regular Show' } : null,
-    querySelectorAll: selector => selector.startsWith('script') ? [] : [{ textContent: 'Regular Show' }, { textContent: 'Season 6 Episode 13' }] };
-  const titles = h.context.CinePresenceMetadata.collect(doc, {});
+  const doc = { title: 'Watch', querySelector: (selector: string) => selector === 'h1' ? { textContent: 'Regular Show' } : null,
+    querySelectorAll: (selector: string) => selector.startsWith('script') ? [] : [{ textContent: 'Regular Show' }, { textContent: 'Season 6 Episode 13' }] };
+  const titles = h.context.CinePresenceMetadata.collect(doc as unknown as Document, {});
   assert.equal(titles[0].title, 'Regular Show'); assert.equal(titles[0].subtitle, 'Season 6 Episode 13');
 });
 test('structured movie release year distinguishes remakes without inventing episodes', () => {
@@ -54,13 +65,19 @@ test('parent page metadata and embedded video timing are combined', async () => 
   assert.equal(item.pageKey.length, 64); assert.equal(JSON.stringify(item).includes('/watch/'), false);
 });
 test('top-level excluded platforms never report episodes', async () => {
-  for (const host of ['facebook.com', 'youtube.com', 'x.com', 'instagram.com', 'vk.com', 'vimeo.com', 'dailymotion.com']) {
+  for (const host of ['facebook.com', 'youtube.com', 'x.com', 'instagram.com', 'vk.com', 'vimeo.com', 'dailymotion.com', 'spotify.com', 'open.spotify.com']) {
     const h = harness(); await h.sample({ host }); assert.deepEqual(h.items(), []);
   }
 });
 test('excluded iframe cannot replace the real player', async () => {
   const h = harness(); await h.sample(); await h.sample({ frame: 3, frameHost: 'www.youtube.com' });
   assert.equal(h.items().length, 1); assert.equal(h.items()[0].frameHost, 'cinema.example');
+});
+
+test('Spotify embeds cannot send movie-like titles and unrelated hostname suffixes stay eligible', async () => {
+  const h = harness(); await h.sample({ frame: 3, frameHost: 'open.spotify.com' });
+  assert.deepEqual(h.items(), []);
+  await h.sample({ host: 'notspotify.com' }); assert.equal(h.items().length, 1);
 });
 test('pause, seek, speed and closure reach the native message', async () => {
   const h = harness(); await h.sample(); await h.sample({ player: { state: 'paused', position: 222, duration: 673, rate: 2 } });
@@ -84,14 +101,14 @@ test('an excluded page invalidates in-flight samples from the previous page', as
 });
 
 
-function documentFixture(title, heading, nearby = '', meta = {}) {
+function documentFixture(title: string, heading: string, nearby = '', meta: Record<string, string> = {}) {
   const h1 = heading ? { textContent: heading, parentElement: { textContent: nearby || heading, parentElement: null } } : null;
-  return { title, querySelector: selector => selector === 'h1' ? h1 : Object.entries(meta).map(([key, content]) => selector.includes(`"${key}"`) ? { content } : null).find(Boolean) ?? null,
-    querySelectorAll: selector => selector.startsWith('script') ? [] : h1 ? [h1] : [] };
+  return { title, querySelector: (selector: string) => selector === 'h1' ? h1 : Object.entries(meta).map(([key, content]) => selector.includes(`"${key}"`) ? { content } : null).find(Boolean) ?? null,
+    querySelectorAll: (selector: string) => selector.startsWith('script') ? [] : h1 ? [h1] : [] } as unknown as Document;
 }
 test('series route plus local player heading yields type, ID and episode without a site rule', () => {
   const m = harness().context.CinePresenceMetadata;
-  for (const [name, id, season, episode] of [['Lanterns', 95350, 1, 7], ['Raw', 4656, 34, 14]]) {
+  for (const [name, id, season, episode] of [['Lanterns', 95350, 1, 7], ['Raw', 4656, 34, 14]] as const) {
     const titles = m.collect(documentFixture(name + ' | Cinema', name, `${name} S${season} E${episode} Episode title`), {}, `https://cinema.example/tv/${id}/${season}/${episode}?play=true`);
     assert.equal(titles[0].title, name); assert.equal(titles[0].kind, 'TVSeries'); assert.equal(titles[0].tmdbId, id);
     assert.equal(titles[0].subtitle, `S${season} E${episode}`);

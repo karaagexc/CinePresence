@@ -28,7 +28,7 @@ public static partial class MediaClassification
             (windows ?? []).Any(caption => IsBlockedVideoPlatform(caption) &&
                 (parsed is null ? WindowTitlePolicy.Resolve(windows!) is null :
                     TitleParser.Normalize(caption).StartsWith(name + " ", StringComparison.Ordinal))))
-            return ("Social/video platform excluded · not shared", false);
+            return ("Excluded platform · not shared", false);
         // A website name can also be a TMDB movie title. It is not evidence that
         // the browser is playing that movie, regardless of search/cache results.
         if (name is "facebook" or "facebook watch" or "youtube" or "youtube shorts" or "instagram" or "tiktok" or "twitter" or "x" or "reddit" or "twitch" or "kick"
@@ -52,8 +52,8 @@ public static partial class MediaClassification
         return BlockedPlatformLabel().IsMatch(value) || BlockedPlatformHost().IsMatch(value);
     }
 
-    [GeneratedRegex(@"(?i)(?:^|\s[-|–—]\s|\son\s)(?:Facebook(?: Watch)?|YouTube(?: Music| Shorts)?|Twitter(?:/X)?|X(?:/Twitter)?|Instagram|IG|TikTok|VK(?: Video| Видео)?|VKontakte|Vimeo|(?:video\s+)?Dailymotion|Reddit|Twitch|Kick|Snapchat|Pinterest|Threads)(?:$|\s[-|–—]\s)")]
+    [GeneratedRegex(@"(?i)(?:^|\s[-|–—]\s|\son\s)(?:Spotify(?: Web Player)?|Facebook(?: Watch)?|YouTube(?: Music| Shorts)?|Twitter(?:/X)?|X(?:/Twitter)?|Instagram|IG|TikTok|VK(?: Video| Видео)?|VKontakte|Vimeo|(?:video\s+)?Dailymotion|Reddit|Twitch|Kick|Snapchat|Pinterest|Threads)(?:$|\s[-|–—]\s)")]
     private static partial Regex BlockedPlatformLabel();
-    [GeneratedRegex(@"(?i)(?:^|[\s/])(?:[a-z0-9-]+\.)*(?:facebook\.com|fb\.watch|youtube\.com|youtu\.be|twitter\.com|x\.com|instagram\.com|tiktok\.com|vk\.com|vkvideo\.ru|vimeo\.com|dailymotion\.com|dai\.ly|reddit\.com|twitch\.tv|kick\.com|snapchat\.com|pinterest\.com|threads\.(?:net|com))(?=$|[\s/:])")]
+    [GeneratedRegex(@"(?i)(?:^|[\s/])(?:[a-z0-9-]+\.)*(?:spotify\.com|facebook\.com|fb\.watch|youtube\.com|youtu\.be|twitter\.com|x\.com|instagram\.com|tiktok\.com|vk\.com|vkvideo\.ru|vimeo\.com|dailymotion\.com|dai\.ly|reddit\.com|twitch\.tv|kick\.com|snapchat\.com|pinterest\.com|threads\.(?:net|com))(?=$|[\s/:])")]
     private static partial Regex BlockedPlatformHost();
 }
