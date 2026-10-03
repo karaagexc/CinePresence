@@ -69,6 +69,46 @@ public sealed class BrowserCompanionTests
         adapter.Accept(Batch(Item()), now.AddSeconds(-10)); Assert.Empty(adapter.ConnectedBrowsers);
         Assert.Empty(await adapter.ReadAsync(default));
     }
+    [Fact] public async Task TwoTabsFromTheSameBrowserHandOffThroughAdapterAndEngine()
+    {
+        await using var adapter = new BrowserAdapter(); var now = DateTimeOffset.UtcNow;
+        var publisher = new RecordingPublisher();
+        using var engine = new PresenceEngine(new TitleResolver(), publisher);
+        var first = Item();
+        var second = Item() with { Id = "18", PageKey = new string('b', 64), Host = "another.example",
+            Titles = [new("Arrival", "", "Movie")], Position = 200, Duration = 6000 };
+        async Task Update(params BrowserItem[] items)
+        {
+            Assert.True(adapter.Accept(Batch(items), now)); now = now.AddMilliseconds(50);
+            engine.Update(await adapter.ReadAsync(default));
+        }
+        async Task Shared(string title)
+        {
+            for (var i = 0; i < 100 && publisher.Last?.Title != title; i++) await Task.Delay(10);
+            Assert.Equal(title, publisher.Last?.Title);
+        }
+        await Update(first); await Shared("Regular Show");
+        await Update(first, second); Assert.EndsWith("-17", engine.View.Source!.SessionId);
+        await Update(first with { State = "paused" }, second); await Shared("Arrival");
+        Assert.EndsWith("-18", engine.View.Source!.SessionId);
+        await Update(first, second); Assert.EndsWith("-18", engine.View.Source!.SessionId);
+        await Update(first, second with { State = "paused" }); await Shared("Regular Show");
+        await Update(first with { State = "paused" }, second with { State = "paused" }); Assert.Null(publisher.Last);
+        await Update(second); await Shared("Arrival");
+        await Update(); Assert.Null(publisher.Last);
+    }
+
+    private sealed class RecordingPublisher : IPresencePublisher
+    {
+        public volatile PresencePayload? Last;
+        public void Publish(PresencePayload? presence) => Last = presence;
+        public void Dispose() { }
+    }
+    private sealed class TitleResolver : IMediaResolver
+    {
+        public Task<ResolvedMedia?> ResolveAsync(ParsedTitle title, CancellationToken ct) =>
+            Task.FromResult<ResolvedMedia?>(new(1, title.TypeHint ?? MediaType.Movie, title.Title, null, null, title.Season, title.Episode));
+    }
     [Fact] public async Task FiniteGrowingBrowserBufferIsLiveAndDoesNotInventAnEndTime()
     {
         await using var adapter = new BrowserAdapter(); var now = DateTimeOffset.UtcNow;

@@ -11,31 +11,37 @@ interface Listeners {
   disconnect(): void;
   removed(id: number): void;
   updated(id: number, change: { url?: string; status?: string }): void;
+  activated(info: { tabId: number }): void;
 }
 interface Sample {
-  host?: string; frameHost?: string; frame?: number;
+  host?: string; frameHost?: string; frame?: number; tab?: number; documentId?: string; lifecycle?: string;
   titles?: Partial<CinePresence.Title>[]; player?: Partial<CinePresence.Player> | null; incognito?: boolean;
 }
 function harness() {
-  const listeners = {} as Listeners, sent: unknown[] = [];
-  const context = vm.createContext({ URL, TextEncoder, crypto: webcrypto, navigator: { userAgent: 'Edg/140' }, setInterval() {}, Date,
+  const listeners = {} as Listeners, sent: unknown[] = [], requested: number[] = [];
+  let now = Date.now();
+  class Clock extends Date { static override now() { return now; } }
+  const context = vm.createContext({ URL, TextEncoder, crypto: webcrypto, navigator: { userAgent: 'Edg/140' }, setInterval() {}, Date: Clock,
     chrome: {
       storage: { session: { async get() { return {}; }, async set() {} } },
       runtime: { id: 'test', getURL: (x: string) => 'chrome-extension://test/' + x,
-        onMessage: { addListener: (fn: Listeners['message']) => listeners.message = fn },
-        connectNative: () => ({ postMessage(packet: unknown) { sent.push(packet); queueMicrotask(() => listeners.native({ connected: true, message: 'Connected' })); },
+        onMessage: { addListener: (fn: Listeners['message']) => listeners.message = (message, sender, reply = () => {}) => fn(message, sender, reply) },
+        connectNative: () => ({ postMessage(packet: unknown) { sent.push(JSON.parse(JSON.stringify(packet))); queueMicrotask(() => listeners.native({ connected: true, message: 'Connected' })); },
           onMessage: { addListener: (fn: Listeners['native']) => listeners.native = fn }, onDisconnect: { addListener: (fn: Listeners['disconnect']) => listeners.disconnect = fn }, disconnect() {} }) },
       tabs: { onRemoved: { addListener: (fn: Listeners['removed']) => listeners.removed = fn }, onUpdated: { addListener: (fn: Listeners['updated']) => listeners.updated = fn },
+        onActivated: { addListener: (fn: Listeners['activated']) => listeners.activated = fn },
+        async sendMessage(id: number) { requested.push(id); },
         async query() { return [{ id: 1, url: 'https://cinema.example/watch/17' }]; } }
     }
   }) as vm.Context & { CinePresenceMetadata: CinePresence.Metadata };
   vm.runInContext(fs.readFileSync(path.join(root, 'dist/metadata.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(root, 'dist/worker.js'), 'utf8').replace('import "./metadata.js";', ''), context);
   const settle = () => new Promise(resolve => setTimeout(resolve, 25));
-  async function sample({ host = 'cinema.example', frameHost = host, frame = 0, titles = [{ title: 'Regular Show', subtitle: 'S6E13', kind: 'TVEpisode' }], player = { state: 'playing', position: 70, duration: 673, rate: 1 }, incognito = false }: Sample = {}) {
-    listeners.message({ type: 'sample', titles, player }, { id: 'test', tab: { id: 1, url: `https://${host}/watch/17`, incognito }, frameId: frame, url: `https://${frameHost}/embed` }); await settle();
+  async function sample({ host = 'cinema.example', frameHost = host, frame = 0, tab = 1, documentId, lifecycle = 'active', titles = [{ title: 'Regular Show', subtitle: 'S6E13', kind: 'TVEpisode' }], player = { state: 'playing', position: 70, duration: 673, rate: 1 }, incognito = false }: Sample = {}) {
+    listeners.message({ type: 'sample', titles, player }, { id: 'test', tab: { id: tab, url: `https://${host}/watch/17`, incognito }, frameId: frame, documentId, documentLifecycle: lifecycle, url: `https://${frameHost}/embed` }); await settle();
   }
-  return { context, listeners, sent, sample, settle, items: (): CinePresence.Item[] => JSON.parse(JSON.stringify(vm.runInContext('packetItems()', context))) };
+  return { context, listeners, sent, requested, sample, settle, advance: (ms: number) => now += ms,
+    items: (): CinePresence.Item[] => JSON.parse(JSON.stringify(vm.runInContext('packetItems()', context))) };
 }
 test('stable extension ID matches the native host registration', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
@@ -134,4 +140,93 @@ test('corroborating heading, media metadata and route hints survive iframe forwa
 test('movie year is not borrowed from a recommendations region', () => {
   const titles = harness().context.CinePresenceMetadata.collect(documentFixture('Dune', 'Dune', 'Dune Related movies Arrival 2016'), {}, 'https://cinema.example/movie/438631');
   assert.equal(titles[0].title, 'Dune');
+});
+
+test('separate tabs keep their own title and pause state through an embedded-player handoff', async () => {
+  const h = harness();
+  await h.sample({ tab: 1, player: null });
+  await h.sample({ tab: 1, frame: 3, frameHost: 'embed.example', titles: [] });
+  await h.sample({ tab: 2, host: 'another.example', titles: [{ title: 'Arrival (2016)', kind: 'Movie' }] });
+  assert.deepEqual(h.items().map(x => [x.id, x.state]), [['1', 'playing'], ['2', 'playing']]);
+  await h.sample({ tab: 1, frame: 3, frameHost: 'embed.example', titles: [], player: { state: 'paused', position: 75, duration: 673 } });
+  const items = h.items();
+  assert.deepEqual(items.map(x => [x.id, x.state]), [['1', 'paused'], ['2', 'playing']]);
+  assert.equal(items[1].titles[0].title, 'Arrival (2016)');
+  assert.deepEqual((h.sent.at(-1) as { items: CinePresence.Item[] }).items.map(x => [x.id, x.state]), [['1', 'paused'], ['2', 'playing']]);
+  h.listeners.removed(1); assert.equal(h.items()[0].id, '2');
+});
+
+test('worker rediscovers existing, activated and newly loaded tabs without changing selection', async () => {
+  const h = harness(); await h.settle(); assert.ok(h.requested.includes(1));
+  h.listeners.activated({ tabId: 2 }); assert.ok(h.requested.includes(2));
+  h.listeners.updated(3, { status: 'complete' }); assert.ok(h.requested.includes(3));
+  await h.sample(); h.requested.length = 0; h.advance(3000);
+  assert.equal(h.items()[0].state, 'playing'); assert.deepEqual(h.requested, [1]);
+  await h.sample({ player: { state: 'paused' } }); assert.equal(h.items()[0].state, 'paused');
+});
+
+test('an old document cannot remove a new player and cached pages cannot revive playback', async () => {
+  const h = harness(); await h.sample({ documentId: 'new-document' });
+  h.listeners.message({ type: 'gone' }, { id: 'test', tab: { id: 1, url: 'https://cinema.example/watch/17' }, frameId: 0, documentId: 'old-document', url: 'https://cinema.example/watch/17' });
+  assert.equal(h.items().length, 1);
+  await h.sample({ documentId: 'old-document', lifecycle: 'cached', player: { state: 'paused' } });
+  assert.equal(h.items()[0].state, 'playing');
+  h.listeners.message({ type: 'gone' }, { id: 'test', tab: { id: 1, url: 'https://cinema.example/watch/17' }, frameId: 0, documentId: 'new-document', documentLifecycle: 'cached', url: 'https://cinema.example/watch/17' });
+  assert.deepEqual(h.items(), []);
+});
+
+function contentHarness() {
+  const sent: CinePresence.Message[] = [], timers = new Map<number, () => void>();
+  const page = new EventTarget(); let listener: Listeners['message'] = () => {}, failures = 0;
+  const createVideo = () => Object.assign(new EventTarget(), { paused: true, ended: false, readyState: 1, currentTime: 70, duration: 673, playbackRate: 1,
+    seekable: { length: 0, start: () => 0 }, getBoundingClientRect: () => ({ width: 800, height: 450 }) });
+  let video = createVideo();
+  let videos = [video]; const doc = Object.assign(new EventTarget(), { querySelectorAll: () => videos });
+  const runtime = { id: 'test',
+    onMessage: { addListener: (fn: Listeners['message']) => listener = fn },
+    async sendMessage(message: CinePresence.Message) {
+      if (failures-- > 0) throw new Error('Could not establish connection. Receiving end does not exist.');
+      sent.push(message); return { received: true };
+    } };
+  const context = vm.createContext({ document: doc, navigator: {}, location: { href: 'https://cinema.example/tv/17/6/13' }, Date,
+    chrome: { runtime }, addEventListener: page.addEventListener.bind(page),
+    setInterval(fn: () => void) { timers.set(1, fn); return 1; }, clearInterval(id: number) { timers.delete(id); },
+    CinePresenceMetadata: { host: () => 'cinema.example', excluded: () => false, page: (url: string) => url,
+      collect: () => [{ title: 'Regular Show', subtitle: 'S6E13', kind: 'TVEpisode' }] } });
+  vm.runInContext(fs.readFileSync(path.join(root, 'dist/content.js'), 'utf8'), context);
+  return { sent, get video() { return video; }, runtime, doc, page, timers, failNext: () => failures = 1,
+    media: (event: string) => { doc.dispatchEvent(new Event(event)); video.dispatchEvent(new Event(event)); },
+    removeVideo: () => videos = [], restoreVideo: () => { video = createVideo(); videos = [video]; },
+    tick: () => { for (const fn of timers.values()) fn(); },
+    wake: () => listener({ type: 'sample-now' }, { id: 'test' }, () => {}),
+    settle: () => new Promise(resolve => setTimeout(resolve, 0)) };
+}
+
+test('a transient content-message failure does not permanently freeze a tab in Playing', async () => {
+  const h = contentHarness(); h.video.paused = false; h.media('play'); await h.settle();
+  assert.equal(h.sent.at(-1)!.player!.state, 'playing');
+  h.failNext(); h.video.paused = true; h.media('pause'); await h.settle();
+  h.tick(); await h.settle(); assert.equal(h.sent.at(-1)!.player!.state, 'paused');
+});
+
+test('a newly mounted player reports play and pause before the next timer tick', async () => {
+  const h = contentHarness(); h.removeVideo(); h.tick();
+  h.restoreVideo(); h.video.paused = false; h.media('play'); await h.settle();
+  assert.equal(h.sent.at(-1)!.player!.state, 'playing');
+  h.video.paused = true; h.media('pause'); await h.settle();
+  assert.equal(h.sent.at(-1)!.player!.state, 'paused');
+});
+
+test('background content responds to a sample request even when timers have not run', async () => {
+  const h = contentHarness(); h.video.paused = false; h.wake(); await h.settle();
+  assert.equal(h.sent.at(-1)!.player!.state, 'playing');
+  h.video.paused = true; h.wake(); await h.settle(); assert.equal(h.sent.at(-1)!.player!.state, 'paused');
+});
+
+test('history navigation removes playback until pageshow restores a fresh sample', async () => {
+  const h = contentHarness(); h.page.dispatchEvent(new Event('pagehide')); await h.settle();
+  assert.equal(h.sent.at(-1)!.type, 'gone'); const count = h.sent.length;
+  h.tick(); h.wake(); await h.settle(); assert.equal(h.sent.length, count);
+  h.video.paused = false; h.page.dispatchEvent(new Event('pageshow')); await h.settle();
+  assert.equal(h.sent.at(-1)!.player!.state, 'playing');
 });

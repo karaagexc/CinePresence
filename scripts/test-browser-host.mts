@@ -5,7 +5,7 @@ import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-const exe = path.resolve(process.argv[2] ?? 'artifacts/CinePresence-0.2.3-win-x64/CinePresence.BrowserHost.exe');
+const exe = path.resolve(process.argv[2] ?? 'artifacts/CinePresence-0.2.4-win-x64/CinePresence.BrowserHost.exe');
 const suffix = createHash('sha256').update(process.env.USERDOMAIN + '\\' + process.env.USERNAME).digest('hex').slice(0, 24).toUpperCase();
 const pipeName = '\\\\.\\pipe\\CinePresence.Browser.' + suffix;
 function frame(value: unknown) { const body = Buffer.from(JSON.stringify(value)); const header = Buffer.alloc(4); header.writeInt32LE(body.length); return Buffer.concat([header, body]); }

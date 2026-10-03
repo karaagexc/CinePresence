@@ -36,7 +36,7 @@ Browser-ready scripts are generated into the ignored `browser-companion/dist` di
 npm.cmd run check --prefix browser-companion
 node --test tests/browser-companion.test.mts
 # Close CinePresence before this test: it temporarily owns the app's local pipe.
-node scripts/test-browser-host.mts artifacts/CinePresence-0.2.3-win-x64/CinePresence.BrowserHost.exe
+node scripts/test-browser-host.mts artifacts/CinePresence-0.2.4-win-x64/CinePresence.BrowserHost.exe
 ```
 
 The native-host test runs under the current Windows account. Its pipe identity must match the account that launches the executable; it does not publish Discord activity.

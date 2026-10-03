@@ -31,6 +31,12 @@ While connected, the companion is authoritative for its browser, including empty
 
 Install a newer CinePresence release into the same folder, then reload the unpacked extension in the browser. Portable users moving folders must run **Set up companion** again and load the new extension folder. Remove the extension through the browser's extensions page. The app uninstaller removes its own native host registrations and preserves saved settings/cache.
 
+## Switching between tabs
+
+In CinePresence → Sources, choose **Automatic**. The first eligible playing source stays selected while it plays. Pause it and another playing tab takes over; resuming the earlier tab does not steal the selection back. **Use selected** deliberately pins a source, including while it is paused.
+
+The companion refreshes playback when a tab activates, a page finishes loading, or a page returns from browser history. It also asks background players for fresh state when their samples become stale and retries after temporary messaging failures. Movie/series evidence and platform exclusions still apply to every tab. After upgrading from an older companion, reload the extension and refresh all playback tabs once to replace their old content scripts.
+
 ## Development
 
 Companion sources and the setup-page helper are strict TypeScript in `browser-companion/src`. `npm ci --prefix browser-companion` and `npm run build --prefix browser-companion` compile runtime files into `dist` and type-check the TypeScript test tools; the main build script does both. The browser loads the generated JavaScript because browsers do not execute TypeScript directly. Only runtime files and icons are packaged, not development dependencies. See [Build and development](DEVELOPMENT.md) for prerequisites and test commands.

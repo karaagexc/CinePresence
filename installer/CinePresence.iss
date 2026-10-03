@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "0.2.3"
+  #define AppVersion "0.2.4"
 #endif
 #ifndef SourceDir
   #define SourceDir "..\artifacts\CinePresence-" + AppVersion + "-win-x64"

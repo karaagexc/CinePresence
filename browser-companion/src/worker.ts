@@ -9,6 +9,22 @@ const ready = chrome.storage.session.get("clientId").then(async saved => {
   clientId = typeof saved.clientId === "string" ? saved.clientId : crypto.randomUUID();
   await chrome.storage.session.set({ clientId });
 });
+// Ask existing content scripts for fresh facts; this does not inject scripts or
+// change which pages the companion is allowed to observe.
+const requested = new Map<number, number>();
+function requestSample(id: number) {
+  const now = Date.now();
+  if (now - (requested.get(id) ?? -Infinity) < 1000) return;
+  requested.set(id, now);
+  void chrome.tabs.sendMessage(id, { type: "sample-now" }).catch(() => {});
+}
+async function discoverTabs() {
+  try {
+    const existing = await chrome.tabs.query({ url: ["http://*/*", "https://*/*"] });
+    for (const tab of existing.slice(0, 64))
+      if (tab.id !== undefined && !tab.incognito && M.host(tab.url ?? "") && !M.excluded(M.host(tab.url ?? ""))) requestSample(tab.id);
+  } catch { /* Tab activation/loading and content events also rediscover players. */ }
+}
 function connect() {
   if (port) return;
   try {
@@ -28,6 +44,9 @@ async function hash(value: string): Promise<string> {
 function packetItems() {
   const now = Date.now(), items: CinePresence.Item[] = [];
   for (const [id, tab] of tabs) {
+    // Background-page timers can be throttled. Wake all frames before expiring
+    // an old sample so a paused embed cannot keep winning source selection.
+    if ([...tab.frames.values()].some(x => x.player && now - x.seen > 2000)) requestSample(id);
     for (const [frameId, frame] of tab.frames) if (now - frame.seen > 6000) tab.frames.delete(frameId);
     const frames = [...tab.frames.values()].filter((x): x is CinePresence.Frame & { player: CinePresence.Player } => x.player !== null);
     const playing = frames.filter(x => x.player.state === "playing").sort((a, b) => a.started - b.started);
@@ -55,6 +74,8 @@ chrome.runtime.onMessage.addListener((message: CinePresence.Message, sender, rep
   if (sender.tab) {
     if (sender.tab.id === undefined) return; const tabId = sender.tab.id; const frameId = sender.frameId ?? 0;
     if (!["sample", "gone"].includes(message.type) || sender.tab.incognito) return;
+    reply({ received: true });
+    if (message.type === "sample" && sender.documentLifecycle && sender.documentLifecycle !== "active") return;
     const topUrl = sender.tab.url ?? "", frameUrl = /^https?:/.test(sender.url ?? "") ? sender.url ?? "" : (sender.origin ?? "");
     const topHost = M.host(topUrl), frameHost = M.host(frameUrl);
     if (!topHost || M.excluded(topHost)) { forget(tabId); flush(); return; }
@@ -62,9 +83,17 @@ chrome.runtime.onMessage.addListener((message: CinePresence.Message, sender, rep
       sequences.set(`${tabId}:${frameId}`, ++sequence);
       tabs.get(tabId)?.frames.delete(frameId); flush(); return;
     }
+    if (message.type === "gone") {
+      const previous = tabs.get(tabId)?.frames.get(frameId);
+      if (previous?.documentId && sender.documentId && previous.documentId !== sender.documentId) return;
+    }
+    if (frameId === 0 && message.type === "sample" && message.page && message.page !== M.page(topUrl)) return;
     const frameKey = `${tabId}:${frameId}`, currentSequence = ++sequence;
     sequences.set(frameKey, currentSequence);
-    if (message.type === "gone") { tabs.get(tabId)?.frames.delete(frameId); flush(); return; }
+    if (message.type === "gone") {
+      if (frameId === 0) forget(tabId); else tabs.get(tabId)?.frames.delete(frameId);
+      flush(); return;
+    }
     const epoch = epochs.get(tabId);
     // A content script only sends page/player facts. It cannot approve a manual title.
     (async () => {
@@ -79,7 +108,7 @@ chrome.runtime.onMessage.addListener((message: CinePresence.Message, sender, rep
       const p = message.player;
       const player = p && ["playing", "paused", "stopped"].includes(p.state) ? { state: p.state, position: Number.isFinite(p.position) ? p.position : null, duration: Number.isFinite(p.duration) ? p.duration : null, rate: Number.isFinite(p.rate) ? p.rate : 1, live: p.live === true, seekStart: Number.isFinite(p.seekStart) ? p.seekStart : 0 } : null;
       if (tab.frames.size < 20 || tab.frames.has(frameId)) tab.frames.set(frameId, {
-        frameId: frameId, host: frameHost, titles, player, seen: now,
+        frameId: frameId, documentId: sender.documentId, host: frameHost, titles, player, seen: now,
         started: prior?.player?.state === "playing" && player?.state === "playing" ? prior.started : now
       });
       flush();
@@ -105,11 +134,15 @@ chrome.runtime.onMessage.addListener((message: CinePresence.Message, sender, rep
 });
 function forget(id: number): void {
   tabs.delete(id); epochs.set(id, (epochs.get(id) ?? 0) + 1);
+  requested.delete(id);
   for (const key of sequences.keys()) if (key.startsWith(`${id}:`)) sequences.delete(key);
 }
 chrome.tabs.onRemoved.addListener(id => { forget(id); flush(); });
 chrome.tabs.onUpdated.addListener((id, change) => {
   if (change.url || change.status === "loading") { forget(id); flush(); }
+  if (change.status === "complete") requestSample(id);
 });
+chrome.tabs.onActivated.addListener(({ tabId }) => { requestSample(tabId); });
 setInterval(flush, 1000);
+void discoverTabs();
 flush();
